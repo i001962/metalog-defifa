@@ -1,0 +1,38 @@
+{
+  "retrievedAt": "2026-10-09",
+  "sources": [
+    {
+      "file": "sipmath-3.1.pdf",
+      "url": "https://www.probabilitymanagement.org/s/SIPmath-31-Standard-2025-01-31.pdf",
+      "sha256": "4edfd86e5682dcba57a971cb909d392ce4802a1a5f6b95c71dc21f41db9cf439"
+    },
+    {
+      "file": "hdr-seed.xlsx",
+      "url": "https://www.probabilitymanagement.org/s/HDR_2_0-Seed-Standard.xlsx",
+      "sha256": "bc4d9df416b9fd835c588755b1152071b02977e2d5bcbd493deb9ab1584cd44a"
+    },
+    {
+      "file": "hdr-paper.pdf",
+      "url": "https://www.informs-sim.org/wsc19papers/339.pdf",
+      "sha256": "cba59556e0311e71d2f121c919b1f4b18fb2f5be4d30deecc888c08a73f9da1d"
+    },
+    {
+      "file": "single.SIPmath",
+      "url": "https://sipmath.network/libraries/Lib_01_Single%20Variable_2021_08_23.SIPmath",
+      "sha256": "212ff415d918b73a5f197affac8f6695c8a754d61f8323c05e0e649b9c6a39d6"
+    },
+    {
+      "file": "poisson.SIPmath",
+      "url": "https://sipmath.network/libraries/Lib_06_Poisson_2021_08_23.SIPmath",
+      "sha256": "c8eb6c2c0c1b033f65def3466785ee97c6d3f4708655c0c5348b56f58c6379e7"
+    }
+  ],
+  "consumer": {
+    "name": "@solace-fi/hydrate",
+    "version": "0.1.3",
+    "license": "ISC",
+    "gitCommit": "533fb46822ac7faa2e8156fbf65bfc310902a5d2",
+    "repository": "https://github.com/solace-fi/hydrate",
+    "tarballIntegrity": "sha512-CT1PBufdgirk/N2CpvfQT4+ix3RRJ1c/zMm7IYasjaTVWDOR4p3P9DTXXfa/WZTNoWUeVtEb/13O//aYLi47Zg=="
+  }
+}

@@ -1,0 +1,2 @@
+# Preserve the publisher's canonical fixture bytes and whitespace.
+test/fixtures/sipmath/canonical-*.json -text -whitespace

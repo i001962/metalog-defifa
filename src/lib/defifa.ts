@@ -1,0 +1,429 @@
+import {
+  decodeAbiParameters, decodeFunctionData, encodeAbiParameters, encodeFunctionData, formatEther, getAddress,
+  parseEventLogs, zeroAddress, zeroHash, type Address, type Hex, type PublicClient, type TransactionReceipt,
+} from 'viem'
+import { createHookMetadata, hookMetadataId } from '@bananapus/nana-sdk-core'
+import { allocateManualPositions, allocatePositions, type Allocation } from '../domain/allocation'
+import { validateCoefficients, type Coefficients } from '../domain/distribution'
+import {
+  decodeMarketDefinition, encodeMarketDefinition, SCORECARD_TIMEOUT_BUFFER_SECONDS, validateMarket,
+  type MarketDefinition,
+} from '../domain/market'
+import { createRanges, type RangeBin } from '../domain/ranges'
+import {
+  assertChain, assertGameClone, contractRead, DEFIFA_ABI, deploymentForChain, sameAddress, verifyDefifaDeployment,
+} from './defifa-deployment'
+import type { PreparedTransaction } from './transaction'
+import { publicClientForChain, SUPPORTED_CHAINS } from './wallet'
+
+export { DEFIFA_ABI, deploymentForChain, SUPPORTED_CHAINS }
+export const NATIVE_TOKEN = '0x000000000000000000000000000000000000EEEe' as Address
+export const ATTESTATION_GRACE_SECONDS = 86_400
+export const ATTESTATION_TIMELOCK_SECONDS = 3_600
+
+export type MarketSnapshot = {
+  chainId: number
+  projectId: string
+  hook: Address
+  governor: Address
+  definition: MarketDefinition
+  ranges: RangeBin[]
+  phase: number
+  stage: 'countdown' | 'entry' | 'refund' | 'trading' | 'settlement' | 'complete' | 'no-contest'
+  blockNumber: string
+  blockTimestamp: number
+  potWei: string
+  tiers: { tierId: number; supply: string; entrySupply: string | null; priceWei: string; remainingSupply: string }[]
+  ratifiedScorecardId: string | null
+  ratifiedWeights: { tierId: number; weight: string }[] | null
+  cashOutWeightTotal: string
+  commitmentsFulfilled: boolean
+  noContestTriggered: boolean
+}
+
+type RawTier = { id: number; price: bigint; reserveFrequency: number; remainingSupply: number }
+type RulesetResult = readonly [{ id: number }, { dataHook: Address }]
+
+function projectNumber(projectId: string): bigint {
+  if (!/^[1-9]\d{0,77}$/.test(projectId) || BigInt(projectId) >= 1n << 256n) {
+    throw new Error('Enter a valid Defifa project ID.')
+  }
+  return BigInt(projectId)
+}
+
+function signer(account: Address): Address {
+  const address = getAddress(account)
+  if (address === zeroAddress) throw new Error('Connect a wallet before preparing this transaction.')
+  return address
+}
+
+function gameStage(phase: number, definition: MarketDefinition, timestamp: number): MarketSnapshot['stage'] {
+  switch (phase) {
+    case 0: return 'countdown'
+    case 1: return 'entry'
+    case 2: return 'refund'
+    case 3: return timestamp < definition.resolvesAt ? 'trading' : 'settlement'
+    case 4: return 'complete'
+    case 5: return 'no-contest'
+    default: throw new Error('The game returned an unknown phase.')
+  }
+}
+
+/** Every field is read at one block. A failed read never becomes an empty market or zero balance. */
+export async function readMarket(chainId: number, projectId: string): Promise<MarketSnapshot> {
+  const client = publicClientForChain(chainId)
+  await assertChain(client, chainId)
+  const block = await client.getBlock()
+  return readMarketAt(client, chainId, projectId, block.number, Number(block.timestamp))
+}
+
+async function readMarketAt(
+  client: PublicClient, chainId: number, projectId: string, blockNumber: bigint, timestamp: number,
+): Promise<MarketSnapshot> {
+  const d = deploymentForChain(chainId)
+  const id = projectNumber(projectId)
+  const read = <T>(address: Address, contract: keyof typeof DEFIFA_ABI, fn: string, args: readonly unknown[] = []) =>
+    contractRead<T>(client, address, contract, fn, args, blockNumber)
+  const [uri, currentRuleset, token, controller, projectOwner, times, phase, pot, ratified, fulfilled, noContest] = await Promise.all([
+    read<string>(d.controller, 'JBController', 'uriOf', [id]),
+    read<RulesetResult>(d.controller, 'JBController', 'currentRulesetOf', [id]),
+    read<Address>(d.deployer, 'DefifaDeployer', 'tokenOf', [id]),
+    read<Address>(d.directory, 'JBDirectory', 'controllerOf', [id]),
+    read<Address>(d.projects, 'JBProjects', 'ownerOf', [id]),
+    read<readonly [number, number, number]>(d.deployer, 'DefifaDeployer', 'timesFor', [id]),
+    read<number>(d.deployer, 'DefifaDeployer', 'currentGamePhaseOf', [id]),
+    read<readonly [bigint, Address, bigint]>(d.deployer, 'DefifaDeployer', 'currentGamePotOf', [id, false]),
+    read<bigint>(d.governor, 'DefifaGovernor', 'ratifiedScorecardIdOf', [id]),
+    read<boolean>(d.deployer, 'DefifaDeployer', 'commitmentsFulfilledFor', [id]),
+    read<boolean>(d.deployer, 'DefifaDeployer', 'noContestTriggeredFor', [id]),
+  ])
+  if (!sameAddress(controller, d.controller) || !sameAddress(projectOwner, d.deployer)
+    || !sameAddress(token, NATIVE_TOKEN) || !sameAddress(pot[1], NATIVE_TOKEN) || Number(pot[2]) !== 18) {
+    throw new Error('This project is not a supported native-token Defifa market.')
+  }
+  const definition = decodeMarketDefinition(uri)
+  const ranges = createRanges(definition.rangeCount, definition.rangeWidth)
+  if (Number(times[0]) !== definition.entryClosesAt || Number(times[2]) !== 0
+    || Number(times[1]) !== definition.entryClosesAt - definition.entryOpensAt) {
+    throw new Error('The market metadata does not match the onchain entry times.')
+  }
+  let hook = currentRuleset[1].dataHook
+  if (sameAddress(hook, zeroAddress)) {
+    hook = (await read<RulesetResult>(d.controller, 'JBController', 'latestQueuedRulesetOf', [id]))[1].dataHook
+  }
+  assertGameClone(await client.getCode({ address: hook, blockNumber }), d.implementation)
+  const [terminal, governor, origin, store, reporter, hookProjectId, attestationStart, rawTiers] = await Promise.all([
+    read<Address>(d.directory, 'JBDirectory', 'primaryTerminalOf', [id, NATIVE_TOKEN]),
+    read<Address>(hook, 'DefifaHook', 'owner'),
+    read<Address>(hook, 'DefifaHook', 'CODE_ORIGIN'),
+    read<Address>(hook, 'DefifaHook', 'store'),
+    read<Address>(hook, 'DefifaHook', 'gamePhaseReporter'),
+    read<bigint>(hook, 'DefifaHook', 'projectId'),
+    read<bigint>(d.governor, 'DefifaGovernor', 'attestationStartTimeOf', [id]),
+    read<RawTier[]>(d.store, 'JB721TiersHookStore', 'tiersOf', [hook, [], false, 0n, 128n]),
+  ])
+  if (!sameAddress(terminal, d.terminal) || !sameAddress(governor, d.governor)
+    || !sameAddress(origin, d.implementation) || !sameAddress(store, d.store)
+    || !sameAddress(reporter, d.deployer) || hookProjectId !== id) {
+    throw new Error('The game contracts do not match the configured Defifa deployment.')
+  }
+  if (Number(attestationStart) !== definition.resolvesAt || rawTiers.length !== ranges.length) {
+    throw new Error('The market metadata does not match its resolution time or tiers.')
+  }
+  const tiers = await Promise.all(rawTiers.map(async (tier, index) => {
+    const tierId = Number(tier.id)
+    const [name, supply, redeemed] = await Promise.all([
+      read<string>(hook, 'DefifaHook', 'tierNameOf', [BigInt(tierId)]),
+      read<bigint>(hook, 'DefifaHook', 'currentSupplyOfTier', [BigInt(tierId)]),
+      Number(phase) === 4 ? read<bigint>(hook, 'DefifaHook', 'tokensRedeemedFrom', [BigInt(tierId)]) : Promise.resolve(0n),
+    ])
+    if (tierId !== ranges[index].tierId || name !== ranges[index].label || Number(tier.reserveFrequency) !== 0
+      || tier.price !== BigInt(definition.unitPriceWei)) {
+      throw new Error('The onchain ranges, price or reserves do not match this market.')
+    }
+    return {
+      tierId, supply: supply.toString(), entrySupply: Number(phase) === 3 || Number(phase) === 4 ? (supply + redeemed).toString() : null,
+      priceWei: tier.price.toString(), remainingSupply: String(tier.remainingSupply),
+    }
+  }))
+  // DefifaHookLib.validateAndBuildWeights stores the exact scorecard at [tierId - 1].
+  const weights = ratified === 0n ? null : await read<readonly bigint[]>(hook, 'DefifaHook', 'tierCashOutWeights')
+  const ratifiedWeights = weights === null ? null : ranges.map(range => ({
+    tierId: range.tierId, weight: weights[range.tierId - 1].toString(),
+  }))
+  return {
+    chainId, projectId, hook, governor, definition, ranges, phase: Number(phase),
+    stage: gameStage(Number(phase), definition, timestamp), blockNumber: blockNumber.toString(), blockTimestamp: timestamp,
+    potWei: pot[0].toString(), tiers, ratifiedScorecardId: ratified === 0n ? null : ratified.toString(),
+    ratifiedWeights, cashOutWeightTotal: '1000000000000000000',
+    commitmentsFulfilled: fulfilled, noContestTriggered: noContest,
+  }
+}
+
+async function assertEntryRules(client: PublicClient, market: MarketSnapshot): Promise<void> {
+  const d = deploymentForChain(market.chainId)
+  const id = projectNumber(market.projectId)
+  const block = BigInt(market.blockNumber)
+  const [scoring, splitsAddress, safety, grace, timelock] = await Promise.all([
+    contractRead<RulesetResult>(client, d.controller, 'JBController', 'latestQueuedRulesetOf', [id], block),
+    contractRead<Address>(client, d.controller, 'JBController', 'SPLITS', [], block),
+    contractRead<readonly [bigint, number]>(client, d.deployer, 'DefifaDeployer', 'safetyParamsOf', [id], block),
+    contractRead<bigint>(client, d.governor, 'DefifaGovernor', 'attestationGracePeriodOf', [id], block),
+    contractRead<bigint>(client, d.governor, 'DefifaGovernor', 'timelockDurationOf', [id], block),
+  ])
+  const expectedTimeout = market.definition.resolvesAt - market.definition.entryClosesAt + SCORECARD_TIMEOUT_BUFFER_SECONDS
+  if (safety[0] !== 0n || Number(safety[1]) !== expectedTimeout || grace !== BigInt(ATTESTATION_GRACE_SECONDS)
+    || timelock !== BigInt(ATTESTATION_TIMELOCK_SECONDS)) {
+    throw new Error('The game settlement settings differ from this supported market definition.')
+  }
+  type Split = { projectId: bigint; beneficiary: Address; hook: Address; preferAddToBalance: boolean }
+  const splits = await contractRead<Split[]>(
+    client, splitsAddress, 'JBSplits', 'splitsOf', [id, BigInt(scoring[0].id), BigInt(NATIVE_TOKEN)], block,
+  )
+  // The pinned deployer always appends these two protocol splits after any organizer splits.
+  const projects = [d.deployerGetters.DEFIFA_PROJECT_ID, d.deployerGetters.BASE_PROTOCOL_PROJECT_ID]
+  if (splits.length !== 2 || splits.some((split, index) => split.projectId !== BigInt(projects[index])
+    || !sameAddress(split.beneficiary, market.hook) || !sameAddress(split.hook, zeroAddress) || split.preferAddToBalance)) {
+    throw new Error('This game has payout splits outside the supported market definition.')
+  }
+}
+
+/** Explicit IDs keep first-run discovery bounded and never imply a complete chain index. */
+export async function listMarkets(chainId: number): Promise<{ markets: MarketSnapshot[]; errors: string[] }> {
+  deploymentForChain(chainId)
+  const configuration = process.env.METALOG_MARKETS || process.env.NEXT_PUBLIC_METALOG_MARKETS || ''
+  const entries = configuration.split(',').map(value => value.trim()).filter(Boolean)
+  const errors: string[] = []
+  const ids = new Set<string>()
+  for (const entry of entries) {
+    const match = /^(\d+):([1-9]\d{0,77})$/.exec(entry)
+    if (!match) { errors.push('A configured market ID is invalid.'); continue }
+    if (Number(match[1]) === chainId) ids.add(match[2])
+  }
+  if (ids.size > 20) errors.push('Only the first 20 configured markets are shown.')
+  const results = await Promise.allSettled([...ids].slice(0, 20).map(id => readMarket(chainId, id)))
+  const markets: MarketSnapshot[] = []
+  results.forEach((result, index) => {
+    if (result.status === 'fulfilled') markets.push(result.value)
+    else errors.push(`Market ${[...ids][index]} is unavailable: ${result.reason instanceof Error ? result.reason.message : 'read failed'}`)
+  })
+  return { markets, errors }
+}
+
+function launchData(definition: MarketDefinition, chainId: number) {
+  const d = deploymentForChain(chainId)
+  const uri = encodeMarketDefinition(definition)
+  return {
+    name: definition.prompt, projectUri: uri, contractUri: uri, baseUri: '',
+    tiers: createRanges(definition.rangeCount, definition.rangeWidth).map(range => ({
+      name: range.label, reservedRate: 0, reservedTokenBeneficiary: zeroAddress, encodedIpfsUri: zeroHash,
+      shouldUseReservedTokenBeneficiaryAsDefault: false,
+    })),
+    tierPrice: BigInt(definition.unitPriceWei), token: { token: NATIVE_TOKEN, decimals: 18, currency: 1 },
+    mintPeriodDuration: definition.entryClosesAt - definition.entryOpensAt, refundPeriodDuration: 0,
+    start: BigInt(definition.entryClosesAt), splits: [], attestationStartTime: BigInt(definition.resolvesAt),
+    attestationGracePeriod: BigInt(ATTESTATION_GRACE_SECONDS), defaultAttestationDelegate: zeroAddress,
+    defaultTokenUriResolver: zeroAddress, terminal: d.terminal, minParticipation: 0n,
+    scorecardTimeout: definition.resolvesAt - definition.entryClosesAt + SCORECARD_TIMEOUT_BUFFER_SECONDS,
+    timelockDuration: BigInt(ATTESTATION_TIMELOCK_SECONDS),
+  }
+}
+
+export function createdMarketId(receipt: TransactionReceipt): string {
+  const logs = parseEventLogs({ abi: DEFIFA_ABI.DefifaDeployer, logs: receipt.logs, eventName: 'LaunchGame', strict: true })
+    .filter(log => SUPPORTED_CHAINS.some(chain => sameAddress(log.address, deploymentForChain(chain.id).deployer)))
+  if (receipt.status !== 'success' || logs.length !== 1) throw new Error('The receipt does not contain one confirmed Defifa market.')
+  return ((logs[0].args as { gameId: bigint }).gameId).toString()
+}
+
+async function verifyLaunchReceipt(
+  client: PublicClient, chainId: number, owner: Address, definition: MarketDefinition, receipt: TransactionReceipt,
+): Promise<void> {
+  const d = deploymentForChain(chainId)
+  const projectId = createdMarketId(receipt)
+  const launch = parseEventLogs({ abi: DEFIFA_ABI.DefifaDeployer, logs: receipt.logs, eventName: 'LaunchGame', strict: true })
+    .find(log => sameAddress(log.address, d.deployer))
+  if (!launch || !sameAddress((launch.args as { caller: Address }).caller, owner)) {
+    throw new Error('The confirmed market does not match its creator.')
+  }
+  const block = await client.getBlock({ blockNumber: receipt.blockNumber })
+  const market = await readMarketAt(client, chainId, projectId, block.number, Number(block.timestamp))
+  if (encodeMarketDefinition(market.definition) !== encodeMarketDefinition(definition)) {
+    throw new Error('The confirmed market definition does not match the reviewed transaction.')
+  }
+}
+
+function verifyEntryReceipt(hook: Address, owner: Address, tierIds: number[], receipt: TransactionReceipt): void {
+  const transfers = parseEventLogs({ abi: DEFIFA_ABI.DefifaHook, logs: receipt.logs, eventName: 'Transfer', strict: true })
+    .filter(log => sameAddress(log.address, hook))
+    .map(log => log.args as { from: Address; to: Address; tokenId: bigint })
+    .filter(log => sameAddress(log.from, zeroAddress) && sameAddress(log.to, owner))
+  const actualIds = transfers.map(log => Number(log.tokenId / 1_000_000_000n)).sort((left, right) => left - right)
+  if (receipt.status !== 'success' || JSON.stringify(actualIds) !== JSON.stringify(tierIds)) {
+    throw new Error('The receipt does not confirm the complete reviewed NFT allocation.')
+  }
+}
+
+function expandedTierIds(allocation: Allocation): number[] {
+  return allocation.tierIds.flatMap((id, index) => Array<number>(allocation.quantities[index]).fill(id))
+}
+
+/** Recovery rebuilds the effect checks from recorded calldata, without authorizing another send. */
+export async function verifyDefifaTransactionReceipt(
+  request: { chainId: number; account: Address; to: Address; data: Hex; value: bigint },
+  receipt: TransactionReceipt,
+): Promise<void> {
+  const owner = signer(request.account)
+  const client = publicClientForChain(request.chainId)
+  const d = await verifyDefifaDeployment(client, request.chainId, receipt.blockNumber)
+  if (sameAddress(request.to, d.deployer)) {
+    const decoded = decodeFunctionData({ abi: DEFIFA_ABI.DefifaDeployer, data: request.data })
+    if (decoded.functionName !== 'launchGameWith') throw new Error('This is not a supported market creation.')
+    const launch = decoded.args?.[0] as { projectUri: string }
+    const definition = decodeMarketDefinition(launch.projectUri)
+    const expectedData = encodeFunctionData({
+      abi: DEFIFA_ABI.DefifaDeployer, functionName: 'launchGameWith', args: [launchData(definition, request.chainId)],
+    })
+    if (expectedData !== request.data) throw new Error('The recorded creation differs from the supported market definition.')
+    return verifyLaunchReceipt(client, request.chainId, owner, definition, receipt)
+  }
+  if (!sameAddress(request.to, d.terminal)) throw new Error('The recorded transaction has an unsupported target.')
+  const decoded = decodeFunctionData({ abi: DEFIFA_ABI.JBMultiTerminal, data: request.data })
+  if (decoded.functionName !== 'pay') throw new Error('This is not a supported curve entry.')
+  const [projectId, token, amount, beneficiary, minimum, memoText, metadata] = decoded.args as
+    readonly [bigint, Address, bigint, Address, bigint, string, Hex]
+  if (!sameAddress(token, NATIVE_TOKEN) || !sameAddress(beneficiary, owner) || amount !== request.value || minimum !== 0n) {
+    throw new Error('The recorded entry amount or beneficiary does not match.')
+  }
+  if (memoText.length > 1_024 || metadata.length > 14_000) throw new Error('The recorded curve entry is too large.')
+  const memo = JSON.parse(memoText) as { schema?: unknown; units?: unknown; coefficients?: unknown; count?: unknown; mode?: unknown; quantities?: unknown }
+  if (!memo || (memo.schema !== 'metalog.entry.v1' && memo.schema !== 'metalog.entry.v2') || memo.units !== 'percentage-points'
+    || !Array.isArray(memo.coefficients) || typeof memo.count !== 'number') {
+    throw new Error('The recorded curve metadata is not supported.')
+  }
+  if (memo.schema === 'metalog.entry.v2' && (memo.mode !== 'manual' || !Array.isArray(memo.quantities))) {
+    throw new Error('The recorded manual allocation is not supported.')
+  }
+  const coefficients = validateCoefficients(memo.coefficients)
+  const block = await client.getBlock({ blockNumber: receipt.blockNumber })
+  const market = await readMarketAt(client, request.chainId, projectId.toString(), block.number, Number(block.timestamp))
+  await assertEntryRules(client, market)
+  const allocation = memo.schema === 'metalog.entry.v1'
+    ? allocatePositions(coefficients, market.ranges, memo.count)
+    : allocateManualPositions(coefficients, market.ranges, memo.quantities as number[])
+  if (memo.count !== allocation.count) throw new Error('The recorded position total does not match the NFT counts.')
+  const tierIds = expandedTierIds(allocation)
+  if (amount !== BigInt(market.definition.unitPriceWei) * BigInt(allocation.count)) {
+    throw new Error('The recorded entry does not pay the exact position price.')
+  }
+  const [delegate, encodedIds] = decodeAbiParameters(
+    [{ type: 'address' }, { type: 'uint16[]' }], `0x${metadata.slice(130)}`,
+  )
+  const expectedMetadata = createHookMetadata([hookMetadataId(d.implementation, 'pay')], [
+    encodeAbiParameters([{ type: 'address' }, { type: 'uint16[]' }], [owner, tierIds]),
+  ])
+  if (!sameAddress(delegate, owner) || JSON.stringify(encodedIds) !== JSON.stringify(tierIds) || metadata !== expectedMetadata) {
+    throw new Error('The recorded mint metadata does not match the position allocation.')
+  }
+  verifyEntryReceipt(market.hook, owner, tierIds, receipt)
+}
+
+export async function prepareCreateMarket(
+  input: MarketDefinition, chainId: number, account: Address,
+): Promise<PreparedTransaction> {
+  const definition = validateMarket(input)
+  const owner = signer(account)
+  const client = publicClientForChain(chainId)
+  const d = deploymentForChain(chainId)
+  const freshFee = async () => {
+    const block = await client.getBlock()
+    await verifyDefifaDeployment(client, chainId, block.number)
+    validateMarket(definition, Number(block.timestamp))
+    if (definition.entryOpensAt <= Number(block.timestamp)) throw new Error('Entry must open in the future. Update the opening time.')
+    return contractRead<bigint>(client, d.projects, 'JBProjects', 'creationFee', [], block.number)
+  }
+  const fee = await freshFee()
+  const data = encodeFunctionData({ abi: DEFIFA_ABI.DefifaDeployer, functionName: 'launchGameWith', args: [launchData(definition, chainId)] })
+  return {
+    chainId, account: owner, to: d.deployer, data, value: fee, title: 'Create market',
+    details: [
+      { label: 'Question', value: definition.prompt },
+      { label: 'Source', value: definition.source },
+      { label: 'Resolution rule', value: definition.resolutionRule },
+      { label: 'Ranges', value: String(definition.rangeCount) },
+      { label: 'Range width', value: `${definition.rangeWidth} percentage points` },
+      { label: 'Price per position', value: `${formatEther(BigInt(definition.unitPriceWei))} ETH` },
+      { label: 'Entry opens', value: new Date(definition.entryOpensAt * 1000).toISOString() },
+      { label: 'Entry closes', value: new Date(definition.entryClosesAt * 1000).toISOString() },
+      { label: 'Observation ends', value: new Date(definition.resolvesAt * 1000).toISOString() },
+      { label: 'Creation fee', value: `${formatEther(fee)} ETH` },
+    ],
+    reverify: async () => {
+      if (await freshFee() !== fee) throw new Error('The creation fee changed. Review a fresh transaction.')
+    },
+    verifyReceipt: receipt => verifyLaunchReceipt(client, chainId, owner, definition, receipt),
+  }
+}
+
+export async function prepareEntry(
+  market: MarketSnapshot, allocation: Allocation, account: Address, coefficients: Coefficients,
+): Promise<PreparedTransaction> {
+  const owner = signer(account)
+  const a = validateCoefficients(coefficients)
+  const definition = validateMarket(market.definition)
+  if (!allocation || (allocation.mode !== 'curve' && allocation.mode !== 'manual')) {
+    throw new Error('The position allocation mode is not supported.')
+  }
+  const ranges = createRanges(definition.rangeCount, definition.rangeWidth)
+  const expected = allocation.mode === 'manual'
+    ? allocateManualPositions(a, ranges, allocation.quantities)
+    : allocatePositions(a, ranges, allocation.count)
+  if ((Object.keys(expected) as (keyof Allocation)[]).some(key => JSON.stringify(expected[key]) !== JSON.stringify(allocation[key]))) {
+    throw new Error(allocation.mode === 'curve'
+      ? 'The position allocation does not match the submitted curve.'
+      : 'The position allocation does not match the submitted NFT counts.')
+  }
+  const tierIds = expandedTierIds(expected)
+  const client = publicClientForChain(market.chainId)
+  const d = deploymentForChain(market.chainId)
+  const refresh = async () => {
+    const block = await client.getBlock()
+    await verifyDefifaDeployment(client, market.chainId, block.number)
+    const current = await readMarketAt(client, market.chainId, market.projectId, block.number, Number(block.timestamp))
+    if (encodeMarketDefinition(current.definition) !== encodeMarketDefinition(definition)
+      || !sameAddress(current.hook, market.hook)) throw new Error('The market changed. Review the entry again.')
+    if (current.phase !== 1 || current.blockTimestamp < definition.entryOpensAt
+      || current.blockTimestamp >= definition.entryClosesAt) throw new Error('This market is not accepting entries.')
+    await assertEntryRules(client, current)
+    for (let index = 0; index < expected.quantities.length; index++) {
+      if (BigInt(expected.quantities[index]) > BigInt(current.tiers[index].remainingSupply)) {
+        throw new Error('A range no longer has enough positions available.')
+      }
+    }
+    return current
+  }
+  const current = await refresh()
+  const amount = BigInt(definition.unitPriceWei) * BigInt(expected.count)
+  // The address is the attestation delegate. The pay() beneficiary separately receives every NFT.
+  const payload = encodeAbiParameters([{ type: 'address' }, { type: 'uint16[]' }], [owner, tierIds])
+  const metadata = createHookMetadata([hookMetadataId(d.implementation, 'pay')], [payload])
+  const memo = JSON.stringify(expected.mode === 'curve'
+    ? { schema: 'metalog.entry.v1', units: 'percentage-points', coefficients: a, count: expected.count }
+    : { schema: 'metalog.entry.v2', units: 'percentage-points', coefficients: a, mode: 'manual', quantities: expected.quantities, count: expected.count })
+  return {
+    chainId: market.chainId, account: owner, to: d.terminal, value: amount, title: expected.mode === 'manual' ? 'Submit positions' : 'Submit curve',
+    data: encodeFunctionData({
+      abi: DEFIFA_ABI.JBMultiTerminal, functionName: 'pay',
+      args: [projectNumber(market.projectId), NATIVE_TOKEN, amount, owner, 0n, memo, metadata],
+    }),
+    details: [
+      { label: 'Question', value: definition.prompt },
+      { label: 'Positions', value: String(expected.count) },
+      { label: 'Cost', value: `${formatEther(amount)} ETH` },
+      ...expected.quantities.flatMap((quantity, index) => quantity > 0
+        ? [{ label: current.ranges[index].label, value: String(quantity) }] : []),
+    ],
+    reverify: async () => { await refresh() },
+    verifyReceipt: receipt => verifyEntryReceipt(current.hook, owner, tierIds, receipt),
+  }
+}
