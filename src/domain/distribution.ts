@@ -39,6 +39,105 @@ export function coefficientsFromMoments(mean: number, sigma: number): Coefficien
   return validateCoefficients([mean, sigma * Math.sqrt(3) / Math.PI])
 }
 
+/** Fit the first three Metalog terms to the 10th, 50th and 90th percentiles. */
+export function coefficientsFromPercentiles(low: number, median: number, high: number): Coefficients {
+  if (![low, median, high].every(Number.isFinite)) {
+    throw new Error('Enter a finite value for each percentile.')
+  }
+  if (!(low < median && median < high)) {
+    throw new Error('Low outcome must be below the median, and the median below the high outcome.')
+  }
+  const logit = Math.log(9)
+  const lowerDistance = median - low
+  const upperDistance = high - median
+  const baseSpread = (lowerDistance + upperDistance) / (2 * logit)
+  const tailAsymmetry = (upperDistance - lowerDistance) / (0.8 * logit)
+  try {
+    return validateCoefficients([median, baseSpread, tailAsymmetry])
+  } catch (cause) {
+    if (cause instanceof Error && cause.message.startsWith('This curve could not be verified')) {
+      throw new Error('These estimates do not currently produce a curve we can verify. Adjust the percentile values.')
+    }
+    throw cause
+  }
+}
+
+export type QuantilePoint = { probability: number; outcome: number }
+
+/** Fit a Metalog to user-supplied quantiles; overdetermined inputs use least squares. */
+export function coefficientsFromQuantilePoints(points: readonly QuantilePoint[], seed: Coefficients): Coefficients {
+  if (!Array.isArray(points) || points.length < 1) throw new Error('Add at least one quantile point.')
+  const sorted = [...points].sort((left, right) => left.probability - right.probability)
+  if (sorted.some(({ probability, outcome }) => !Number.isFinite(probability) || probability <= 0 || probability >= 1
+    || !Number.isFinite(outcome))) {
+    throw new Error('Enter probabilities above 0% and below 100%, with finite outcomes.')
+  }
+  if (new Set(sorted.map(point => point.probability)).size !== sorted.length) {
+    throw new Error('Each quantile point needs a different probability.')
+  }
+  if (sorted.some((point, index) => index > 0 && point.outcome <= sorted[index - 1].outcome)) {
+    throw new Error('Outcomes must increase as probability increases.')
+  }
+
+  if (sorted.length === 1) {
+    const [point] = sorted
+    const reference = quantile(validateCoefficients(seed), point.probability)
+    return validateCoefficients([seed[0] + point.outcome - reference, ...seed.slice(1)])
+  }
+
+  const terms = Math.min(sorted.length, 6)
+  const matrix = sorted.map(({ probability }) => quantileBasis(probability).slice(0, terms))
+  const fitted = leastSquares(matrix, sorted.map(point => point.outcome))
+  return validateCoefficients(fitted)
+}
+
+function quantileBasis(p: number): number[] {
+  const z = p - 0.5
+  const logit = Math.log(p) - Math.log1p(-p)
+  return [1, logit, z * logit, z, z * z, z * z * logit]
+}
+
+/** Householder QR keeps the overdetermined fit stable without normal equations. */
+function leastSquares(matrix: readonly (readonly number[])[], values: readonly number[]): number[] {
+  const columns = matrix[0]?.length ?? 0
+  const a = matrix.map(row => [...row])
+  const b = [...values]
+  for (let column = 0; column < columns; column++) {
+    let norm = 0
+    for (let row = column; row < a.length; row++) norm = Math.hypot(norm, a[row][column])
+    if (!Number.isFinite(norm) || norm < 1e-12) {
+      throw new Error('These probability points are too close together to fit. Spread them farther apart.')
+    }
+    const alpha = a[column][column] >= 0 ? -norm : norm
+    const vector = a.slice(column).map((row, offset) => row[column] + (offset === 0 ? -alpha : 0))
+    const magnitude = vector.reduce((sum, value) => sum + value * value, 0)
+    if (!Number.isFinite(magnitude) || magnitude === 0) {
+      throw new Error('These probability points are too close together to fit. Spread them farther apart.')
+    }
+    const scale = 2 / magnitude
+    for (let target = column; target < columns; target++) {
+      let projection = 0
+      for (let offset = 0; offset < vector.length; offset++) projection += vector[offset] * a[column + offset][target]
+      for (let offset = 0; offset < vector.length; offset++) a[column + offset][target] -= scale * projection * vector[offset]
+    }
+    let projection = 0
+    for (let offset = 0; offset < vector.length; offset++) projection += vector[offset] * b[column + offset]
+    for (let offset = 0; offset < vector.length; offset++) b[column + offset] -= scale * projection * vector[offset]
+  }
+
+  const result = Array(columns).fill(0) as number[]
+  for (let row = columns - 1; row >= 0; row--) {
+    let value = b[row]
+    for (let column = row + 1; column < columns; column++) value -= a[row][column] * result[column]
+    const diagonal = a[row][row]
+    if (!Number.isFinite(diagonal) || Math.abs(diagonal) < 1e-12) {
+      throw new Error('These probability points are too close together to fit. Spread them farther apart.')
+    }
+    result[row] = value / diagonal
+  }
+  return result
+}
+
 export function parseCoefficients(text: string): Coefficients {
   if (text.length > 1_024) throw new Error('The coefficient array is too long.')
   let input: unknown

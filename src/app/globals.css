@@ -38,10 +38,16 @@ section[aria-labelledby="your-view"] { margin-top: 32px; }
 .field > span:first-child, label > span:first-child { font-size: 14px; font-weight: 550; }
 .forecast-moments { display: flex; flex-wrap: wrap; gap: 0 20px; }
 .forecast-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; }
-.mode-toggle { display: inline-flex; }
+.mode-toggle { display: inline-flex; flex-wrap: wrap; }
 .mode-toggle button + button { margin-left: -1px; }
 .mode-toggle button[aria-pressed="true"] { background: #f0f0f0; font-weight: 550; }
 .forecast-moments input, .stake-input { width: 8rem; }
+.percentile-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 20px; max-width: 48rem; }
+.quantile-rows { max-width: 48rem; }
+.quantile-row { display: grid; grid-template-columns: minmax(7rem, 10rem) minmax(7rem, 10rem) minmax(8rem, 1fr) auto; align-items: center; gap: 8px 14px; border-bottom: 1px solid var(--line); padding-block: 12px 2px; }
+.quantile-row .field { margin-bottom: 8px; }
+.quantile-fit { font-variant-numeric: tabular-nums; }
+.quantile-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 14px; }
 .coefficient-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 20px; max-width: 42rem; }
 .quantity-input { width: 4rem; padding: 3px 7px; text-align: right; }
 .positions { margin-top: 18px; }
@@ -107,6 +113,9 @@ dialog .actions { justify-content: flex-end; }
   main { padding-top: 28px; }
   .grid { grid-template-columns: 1fr; gap: 0; }
   .coefficient-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 12px; }
+  .percentile-fields { grid-template-columns: 1fr; gap: 0; }
+  .quantile-row { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 12px; }
+  .quantile-fit { padding-bottom: 12px; }
   .chart-note { flex-direction: column; gap: 3px; }
   .row { align-items: flex-start; }
   .facts { grid-template-columns: 1fr; gap: 4px; }

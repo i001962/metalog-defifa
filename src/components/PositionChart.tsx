@@ -46,7 +46,9 @@ export function PositionChart({ ranges, quantities, coefficients, onChange, read
   const x = (value: number) => LEFT + (value - low) / span * plotWidth
   const y = (value: number) => axis - value / peak * plotHeight
   // Interval averages preserve narrow spikes without inventing extra probability mass.
-  const line = density?.buckets.map((bucket, index) => `${index ? 'L' : 'M'}${x(bucket.lower)},${y(bucket.density)} L${x(bucket.upper)},${y(bucket.density)}`).join(' ') ?? ''
+  // Canonicalize sub-pixel coordinates so server/browser libm rounding cannot change SVG attributes during hydration.
+  const pathCoordinate = (value: number) => Number(value.toFixed(3))
+  const line = density?.buckets.map((bucket, index) => `${index ? 'L' : 'M'}${pathCoordinate(x(bucket.lower))},${pathCoordinate(y(bucket.density))} L${pathCoordinate(x(bucket.upper))},${pathCoordinate(y(bucket.density))}`).join(' ') ?? ''
   const selected = finite.find(position => position.range.tierId === selectedTier) ?? finite[Math.floor(finite.length / 2)]
   const describe = (position: NonNullable<typeof positions>[number]) => `${position.range.label}: ${position.quantity} NFTs (${(position.share * 100).toFixed(2)}%)`
   const instruction = readOnly ? 'Showing the last valid allocation while you edit.'
