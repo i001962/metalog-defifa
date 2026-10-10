@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { parseEther } from 'viem'
-import { validateMarket } from '@/domain/market'
+import { parseDefaultDelegate, validateMarket } from '@/domain/market'
 import { createRanges, createCustomRanges, parseRangeBoundaries, DEFAULT_RANGE_COUNT, DEFAULT_RANGE_WIDTH, MIN_RANGE_COUNT, MAX_RANGE_COUNT, MIN_RANGE_WIDTH, MAX_RANGE_WIDTH, type RangeBin } from '@/domain/ranges'
 import { SUPPORTED_CHAINS } from '@/lib/wallet'
 import { downloadJson } from '@/lib/forecast'
@@ -19,6 +19,7 @@ export function CreateMarket({ now }: { now: number }) {
   const [prompt, setPrompt] = useState('')
   const [source, setSource] = useState('')
   const [rule, setRule] = useState('Percentage change = 100 × (end value / start value − 1). Use the specified source at the observation start and end. Payouts follow the ratified scorecard.')
+  const [delegate, setDelegate] = useState('')
   const [open, setOpen] = useState(dateInput(now + 600))
   const [close, setClose] = useState(dateInput(now + 24 * 3600))
   const [end, setEnd] = useState(dateInput(now + 48 * 3600))
@@ -47,15 +48,20 @@ export function CreateMarket({ now }: { now: number }) {
   }, [rangeMode, boundaries, rangeCount, rangeWidth])
   if (rangeDraft.ranges && rangeDraft.ranges !== lastRanges[rangeMode]) setLastRanges({ ...lastRanges, [rangeMode]: rangeDraft.ranges })
   const ranges = rangeDraft.ranges ?? lastRanges[rangeMode] ?? []
+  const delegateDraft = useMemo(() => {
+    try { return { address: parseDefaultDelegate(delegate), error: null } }
+    catch (cause) { return { address: undefined, error: cause instanceof Error ? cause.message : 'Enter a valid delegate address.' } }
+  }, [delegate])
   const draft = useMemo(() => {
     try {
       if (!/^(?:\d+(?:\.\d{0,18})?|\.\d{1,18})$/.test(price)) throw new Error('Enter an ETH price with up to 18 decimal places.')
       if (!rangeDraft.configuration) throw new Error(rangeDraft.error || 'Check the ranges.')
+      if (delegateDraft.error) throw new Error(delegateDraft.error)
       const definition = validateMarket({ schemaVersion: 1, settlement: 'defifa-scorecard', prompt, source, resolutionRule: rule,
-        entryOpensAt: seconds(open), entryClosesAt: seconds(close), resolvesAt: seconds(end), ...rangeDraft.configuration, unitPriceWei: parseEther(price).toString() })
+        entryOpensAt: seconds(open), entryClosesAt: seconds(close), resolvesAt: seconds(end), ...rangeDraft.configuration, defaultAttestationDelegate: delegateDraft.address, unitPriceWei: parseEther(price).toString() })
       return { definition, error: null }
     } catch (cause) { return { definition: null, error: cause instanceof Error ? cause.message : 'Check the market details.' } }
-  }, [prompt, source, rule, open, close, end, rangeDraft, price])
+  }, [prompt, source, rule, open, close, end, rangeDraft, delegateDraft, price])
   function selectRangeMode(next: RangeMode) {
     if (next === 'advanced' && boundaries === null) {
       const seed = rangeDraft.ranges ?? lastRanges.simple!
@@ -102,6 +108,7 @@ export function CreateMarket({ now }: { now: number }) {
     <label className="field"><span>Observation ends (UTC)</span><input type="datetime-local" required value={end} onChange={event => setEnd(event.target.value)} /></label>
     <label className="field"><span>Observation source</span><input placeholder="Source, instrument and exact observation to use" maxLength={500} required value={source} onChange={event => setSource(event.target.value)} /></label>
     <label className="field"><span>Observation rule</span><textarea maxLength={2000} required value={rule} onChange={event => setRule(event.target.value)} /><small>Specify timestamps, precision and what to do if the source is unavailable.</small></label>
+    <label className="field"><span id="default-delegate-label">Default delegate</span><input aria-labelledby="default-delegate-label" aria-describedby="default-delegate-help" placeholder="0x… (optional)" autoComplete="off" spellCheck={false} value={delegate} aria-invalid={Boolean(delegateDraft.error)} onChange={event => setDelegate(event.target.value)} /><small id="default-delegate-help">Receives voting power from entries made here. Leave blank for each player to keep it. Players can change delegation during entry.</small>{delegateDraft.error && <small className="error" role="alert">{delegateDraft.error}</small>}</label>
     <div className="forecast-controls"><div className="mode-toggle" role="group" aria-label="Range layout">
       <button type="button" aria-pressed={rangeMode === 'simple'} onClick={() => selectRangeMode('simple')}>Simple</button>
       <button type="button" aria-pressed={rangeMode === 'advanced'} onClick={() => selectRangeMode('advanced')}>Advanced</button>
@@ -131,10 +138,10 @@ export function CreateMarket({ now }: { now: number }) {
       {isTestnet && <div className="field"><div><button type="button" onClick={applyShortSchedule}>Use short test schedule</button></div><small>Opens in 2–3 minutes, then 10 minutes each for entry and observation. Scorecards still take at least 1 day to settle.</small></div>}
       <p className="hint">Payouts follow the ratified scorecard. Entry can be refunded while minting is open.</p>
       <div className="actions">
-        <button type="submit" className="primary" disabled={busy || transactions.busy || Boolean(transactions.pending) || Boolean(rangeDraft.error)}>{busy ? 'Preparing market…' : !wallet.address ? 'Connect to create' : wallet.isSigna ? 'Use external wallet to create' : 'Review market'}</button>
+        <button type="submit" className="primary" disabled={busy || transactions.busy || Boolean(transactions.pending) || Boolean(rangeDraft.error || delegateDraft.error)}>{busy ? 'Preparing market…' : !wallet.address ? 'Connect to create' : wallet.isSigna ? 'Use external wallet to create' : 'Review market'}</button>
         <button type="button" disabled={!draft.definition} onClick={() => draft.definition && downloadJson(draft.definition, 'metalog-market.json')}>Download definition</button>
       </div>
-      {(error || (showValidation && draft.error)) && <p className="error" role="alert" style={{ marginTop: 14 }}>{error || draft.error}</p>}
+      {(error || (showValidation && draft.error && draft.error !== rangeDraft.error && draft.error !== delegateDraft.error)) && <p className="error" role="alert" style={{ marginTop: 14 }}>{error || draft.error}</p>}
     </div>
   </form>
 }

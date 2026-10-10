@@ -31,7 +31,7 @@ The ratified Defifa scorecard controls payouts. There is no automatic oracle, ex
 
 Use an injected external wallet on Ethereum, Optimism, Base or Arbitrum, or their Sepolia testnets. The wallet needs the network's ETH for gas, creation fees and entries.
 
-1. **Create:** choose the network, question, observation rule, dates and ranges. Review the creation fee and confirm in your wallet. The resulting market URL can be shared.
+1. **Create:** choose the network, question, observation rule, dates and ranges. An optional **Default delegate** receives players' voting power; leave it blank for players to delegate to themselves. Review the creation fee and confirm in your wallet. The resulting market URL can be shared.
 2. **Enter:** while entry is open, choose Simple, Expressive or By range, review the exact NFT allocation and stake, then mint. Entry refunds burn the selected NFTs. Optional voting delegation is available during entry.
 3. **Transfer:** select one owned NFT, enter its recipient and review the transfer. Positions remain transferable after entry closes; new entries stop at that time.
 4. **Propose and attest:** record the observed result in a proposed scorecard whose range weights total 100%. Nonzero weights require circulating NFTs in that range. Eligible holders or their delegates attest using Defifa's adjusted voting weight; revocation is available while the proposal is active. Attestation power uses a snapshot before submission, so acquiring an NFT later does not confer a vote on that proposal.
@@ -39,6 +39,8 @@ Use an injected external wallet on Ethereum, Optimism, Base or Arbitrum, or thei
 6. **No contest:** if the native timeout is reached without a ratified scorecard, trigger no contest, then refund selected NFTs. The contract determines eligibility and timing.
 
 Settlement has a **minimum one-day attestation grace period** and this app configures a **one-hour timelock**. A short entry/observation schedule does not shorten those waits. A proposed winner is not a guaranteed payout: the ratified weights are authoritative, and governance can fail to reach agreement.
+
+A default delegate is a voting preference, not an exclusive oracle. Holders can change their delegation during entry. Each entry review shows its delegate; minting redelegates all of that recipient's existing positions in the affected tiers, so a later entry can replace a holder's chosen delegate there.
 
 On a testnet, **Use short test schedule** explicitly sets entry to open in 2–3 minutes, with 10 minutes each for entry and observation. Changing networks preserves the dates you entered. **Recently opened** keeps up to 20 market links in this browser, including confirmed creations; opening a link reads its current chain state again.
 

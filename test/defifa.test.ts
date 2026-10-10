@@ -55,6 +55,7 @@ let ratifiedId = 0n
 let redeemed = 0n
 let extraSplits = false
 let grace = 86_400n
+let observedDelegate: Address = zeroAddress
 
 function mintReceipt(tierIds: number[]): TransactionReceipt {
   return { status: 'success', blockNumber: 100n, logs: tierIds.map((tierId, index) => ({
@@ -78,6 +79,7 @@ beforeEach(() => {
   redeemed = 0n
   extraSplits = false
   grace = 86_400n
+  observedDelegate = zeroAddress
   delete process.env.METALOG_MARKETS
   delete process.env.NEXT_PUBLIC_METALOG_MARKETS
   mocks.getBlock.mockImplementation(async () => ({ number: 100n, timestamp: BigInt(now) }))
@@ -103,6 +105,7 @@ beforeEach(() => {
       case 'store': return deployment.store
       case 'gamePhaseReporter': return deployment.deployer
       case 'projectId': return 7n
+      case 'defaultAttestationDelegate': return observedDelegate
       case 'attestationStartTimeOf': return BigInt(definition.resolvesAt)
       case 'tiersOf': return observedRanges.map(range => ({
         id: range.tierId, price: observedPrice, reserveFrequency: 0, initialSupply: 999_999_999, remainingSupply: remaining,
@@ -147,6 +150,31 @@ describe('Defifa deployment binding', () => {
 })
 
 describe('Defifa launch calldata and fresh state', () => {
+  it('binds the default voting delegate to launch, entry review and recovered calldata', async () => {
+    const delegated = validateMarket({ ...definition, defaultAttestationDelegate: hook })
+    const launch = await prepareCreateMarket(delegated, chainId, account)
+    const data = decodeFunctionData({ abi: DEFIFA_ABI.DefifaDeployer, data: launch.data }).args![0] as Record<string, unknown>
+    expect(data.defaultAttestationDelegate).toBe(hook)
+    expect(decodeMarketDefinition(data.projectUri as string)).toEqual(delegated)
+    expect(launch.details).toContainEqual({ label: 'Default delegate', value: hook })
+    uri = data.projectUri as string
+    await expect(readMarket(chainId, '7')).rejects.toThrow('default delegate')
+    observedDelegate = hook
+    now = definition.entryOpensAt + 1
+    const market = await readMarket(chainId, '7')
+    const coefficients = coefficientsFromMoments(0, 1)
+    const allocation = allocateManualPositions(coefficients, ranges, [1, 0, 1])
+    const entry = await prepareEntry(market, allocation, account, coefficients)
+    const decoded = decodeFunctionData({ abi: DEFIFA_ABI.JBMultiTerminal, data: entry.data })
+    const [delegate] = decodeAbiParameters([{ type: 'address' }, { type: 'uint16[]' }], `0x${(decoded.args![6] as Hex).slice(130)}`)
+    expect(delegate).toBe(hook)
+    expect(entry.details).toContainEqual({ label: 'Voting delegate', value: hook })
+    expect(entry.details?.find(detail => detail.label === 'Delegation change')?.value).toContain('all your existing')
+    await expect(verifyDefifaTransactionReceipt(entry, mintReceipt([1, 3]))).resolves.toBeUndefined()
+    uri = encodeMarketDefinition(definition)
+    observedDelegate = zeroAddress
+    await expect(verifyDefifaTransactionReceipt(entry, mintReceipt([1, 3]))).rejects.toThrow('mint metadata')
+  })
   it('encodes the native Defifa launch struct, immutable definition and exact creation fee', async () => {
     const tx = await prepareCreateMarket(definition, chainId, account)
     const decoded = decodeFunctionData({ abi: DEFIFA_ABI.DefifaDeployer, data: tx.data })

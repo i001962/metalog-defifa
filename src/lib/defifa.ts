@@ -114,7 +114,7 @@ export async function readMarketAt(
     hook = (await read<RulesetResult>(d.controller, 'JBController', 'latestQueuedRulesetOf', [id]))[1].dataHook
   }
   assertGameClone(await client.getCode({ address: hook, blockNumber }), d.implementation)
-  const [terminal, governor, origin, store, reporter, hookProjectId, attestationStart, rawTiers] = await Promise.all([
+  const [terminal, governor, origin, store, reporter, hookProjectId, attestationStart, rawTiers, defaultDelegate] = await Promise.all([
     read<Address>(d.directory, 'JBDirectory', 'primaryTerminalOf', [id, NATIVE_TOKEN]),
     read<Address>(hook, 'DefifaHook', 'owner'),
     read<Address>(hook, 'DefifaHook', 'CODE_ORIGIN'),
@@ -123,6 +123,7 @@ export async function readMarketAt(
     read<bigint>(hook, 'DefifaHook', 'projectId'),
     read<bigint>(d.governor, 'DefifaGovernor', 'attestationStartTimeOf', [id]),
     read<RawTier[]>(d.store, 'JB721TiersHookStore', 'tiersOf', [hook, [], false, 0n, 128n]),
+    read<Address>(hook, 'DefifaHook', 'defaultAttestationDelegate'),
   ])
   if (!sameAddress(terminal, d.terminal) || !sameAddress(governor, d.governor)
     || !sameAddress(origin, d.implementation) || !sameAddress(store, d.store)
@@ -131,6 +132,9 @@ export async function readMarketAt(
   }
   if (Number(attestationStart) !== definition.resolvesAt || rawTiers.length !== ranges.length) {
     throw new Error('The market metadata does not match its resolution time or tiers.')
+  }
+  if (!sameAddress(defaultDelegate, definition.defaultAttestationDelegate ?? zeroAddress)) {
+    throw new Error('The market default delegate does not match its onchain setting.')
   }
   const tiers = await Promise.all(rawTiers.map(async (tier, index) => {
     const tierId = Number(tier.id)
@@ -224,7 +228,7 @@ function launchData(definition: MarketDefinition, chainId: number) {
     tierPrice: BigInt(definition.unitPriceWei), token: { token: NATIVE_TOKEN, decimals: 18, currency: 1 },
     mintPeriodDuration: definition.entryClosesAt - definition.entryOpensAt, refundPeriodDuration: 0,
     start: BigInt(definition.entryClosesAt), splits: [], attestationStartTime: BigInt(definition.resolvesAt),
-    attestationGracePeriod: BigInt(ATTESTATION_GRACE_SECONDS), defaultAttestationDelegate: zeroAddress,
+    attestationGracePeriod: BigInt(ATTESTATION_GRACE_SECONDS), defaultAttestationDelegate: definition.defaultAttestationDelegate ?? zeroAddress,
     defaultTokenUriResolver: zeroAddress, terminal: d.terminal, minParticipation: 0n,
     scorecardTimeout: definition.resolvesAt - definition.entryClosesAt + SCORECARD_TIMEOUT_BUFFER_SECONDS,
     timelockDuration: BigInt(ATTESTATION_TIMELOCK_SECONDS),
@@ -268,6 +272,12 @@ function verifyEntryReceipt(hook: Address, owner: Address, tierIds: number[], re
 
 function expandedTierIds(allocation: Allocation): number[] {
   return allocation.tierIds.flatMap((id, index) => Array<number>(allocation.quantities[index]).fill(id))
+}
+
+function entryMetadata(implementation: Address, definition: MarketDefinition, beneficiary: Address, tierIds: number[]) {
+  const delegate = definition.defaultAttestationDelegate ?? beneficiary
+  const payload = encodeAbiParameters([{ type: 'address' }, { type: 'uint16[]' }], [delegate, tierIds])
+  return { delegate, metadata: createHookMetadata([hookMetadataId(implementation, 'pay')], [payload]) }
 }
 
 /** Recovery rebuilds the effect checks from recorded calldata, without authorizing another send. */
@@ -331,10 +341,8 @@ export async function verifyDefifaTransactionReceipt(
   const [delegate, encodedIds] = decodeAbiParameters(
     [{ type: 'address' }, { type: 'uint16[]' }], `0x${metadata.slice(130)}`,
   )
-  const expectedMetadata = createHookMetadata([hookMetadataId(d.implementation, 'pay')], [
-    encodeAbiParameters([{ type: 'address' }, { type: 'uint16[]' }], [owner, tierIds]),
-  ])
-  if (!sameAddress(delegate, owner) || JSON.stringify(encodedIds) !== JSON.stringify(tierIds) || metadata !== expectedMetadata) {
+  const expectedMetadata = entryMetadata(d.implementation, market.definition, owner, tierIds)
+  if (!sameAddress(delegate, expectedMetadata.delegate) || JSON.stringify(encodedIds) !== JSON.stringify(tierIds) || metadata !== expectedMetadata.metadata) {
     throw new Error('The recorded mint metadata does not match the position allocation.')
   }
   verifyEntryReceipt(market.hook, owner, tierIds, receipt)
@@ -363,6 +371,7 @@ export async function prepareCreateMarket(
       { label: 'Question', value: definition.prompt },
       { label: 'Source', value: definition.source },
       { label: 'Resolution rule', value: definition.resolutionRule },
+      { label: 'Default delegate', value: definition.defaultAttestationDelegate ?? 'None; NFT recipients delegate to themselves.' },
       { label: 'Ranges', value: String(ranges.length) },
       definition.rangeBoundaries === undefined
         ? { label: 'Range width', value: `${definition.rangeWidth} percentage points` }
@@ -419,9 +428,7 @@ export async function prepareEntry(
   }
   const current = await refresh()
   const amount = BigInt(definition.unitPriceWei) * BigInt(expected.count)
-  // The address is the attestation delegate. The pay() beneficiary separately receives every NFT.
-  const payload = encodeAbiParameters([{ type: 'address' }, { type: 'uint16[]' }], [owner, tierIds])
-  const metadata = createHookMetadata([hookMetadataId(d.implementation, 'pay')], [payload])
+  const { delegate, metadata } = entryMetadata(d.implementation, definition, owner, tierIds)
   const memo = JSON.stringify(expected.mode === 'curve'
     ? { schema: 'metalog.entry.v1', units: 'percentage-points', coefficients: a, count: expected.count }
     : { schema: 'metalog.entry.v2', units: 'percentage-points', coefficients: a, mode: 'manual', quantities: expected.quantities, count: expected.count })
@@ -435,6 +442,8 @@ export async function prepareEntry(
       { label: 'Question', value: definition.prompt },
       { label: 'Positions', value: String(expected.count) },
       { label: 'Cost', value: `${formatEther(amount)} ETH` },
+      { label: 'Voting delegate', value: delegate },
+      { label: 'Delegation change', value: 'Applies to all your existing and newly minted positions in the selected ranges. You can change delegates while entry is open.' },
       ...expected.quantities.flatMap((quantity, index) => quantity > 0
         ? [{ label: current.ranges[index].label, value: String(quantity) }] : []),
     ],

@@ -1,3 +1,4 @@
+import { getAddress, isAddress, zeroAddress, type Address } from 'viem'
 import { createCustomRanges, createRanges, validateRangeBoundaries, validateRangeCount, validateRangeWidth, type RangeBin } from './ranges'
 
 type RangeConfiguration =
@@ -16,6 +17,7 @@ export type MarketDefinition = {
   /** Observation ends and Defifa attestations can begin at this second. */
   resolvesAt: number
   unitPriceWei: string
+  defaultAttestationDelegate?: Address
 } & RangeConfiguration
 
 // This is below Defifa's uint48 limit and keeps every accepted timestamp representable by JS Date.
@@ -27,6 +29,16 @@ export const MAX_UNIT_PRICE_WEI = (1n << 104n) - 1n
 
 const DATA_URI_PREFIX = 'data:application/json;charset=utf-8,'
 const MAX_METADATA_LENGTH = 32_768
+
+export function parseDefaultDelegate(value: unknown): Address | undefined {
+  if (value === undefined) return undefined
+  if (typeof value !== 'string') throw new Error('Default delegate must be an Ethereum address.')
+  const address = value.trim()
+  if (address === '') return undefined
+  if (!isAddress(address, { strict: true })) throw new Error('Enter a valid Ethereum address for the default delegate, with a valid checksum if mixed case.')
+  const canonical = getAddress(address)
+  return canonical === zeroAddress ? undefined : canonical
+}
 
 function textField(input: Record<string, unknown>, key: string, maximum: number): string {
   const value = input[key]
@@ -89,6 +101,7 @@ export function validateMarket(input: unknown, now?: number): MarketDefinition {
     || BigInt(unitPriceWei) > MAX_UNIT_PRICE_WEI) {
     throw new Error('Position price must be a positive uint104 amount in wei.')
   }
+  const defaultAttestationDelegate = parseDefaultDelegate(object.defaultAttestationDelegate)
   return {
     schemaVersion: 1,
     settlement: 'defifa-scorecard',
@@ -100,6 +113,7 @@ export function validateMarket(input: unknown, now?: number): MarketDefinition {
     resolvesAt,
     ...rangeConfiguration(object),
     unitPriceWei,
+    ...(defaultAttestationDelegate ? { defaultAttestationDelegate } : {}),
   }
 }
 

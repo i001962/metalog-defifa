@@ -13,6 +13,7 @@ export function MarketFacts({ definition }: { definition: MarketDefinition }) {
     <dt>Observation ends</dt><dd>{utcTime(definition.resolvesAt)}</dd>
     <dt>Source</dt><dd>{definition.source}</dd>
     <dt>Observation rule</dt><dd>{definition.resolutionRule}</dd>
+    <dt>Default delegate</dt><dd>{definition.defaultAttestationDelegate ?? 'None; NFT recipients delegate to themselves.'} Holders can change their voting delegate while entry is open.</dd>
     <dt>Ranges</dt><dd>{definition.rangeBoundaries === undefined
       ? <>{ranges.length - 2} equal ranges of {definition.rangeWidth}%, plus two overflow ranges.</>
       : <>{ranges.length} ranges with cutoffs at {ranges.slice(0, -1).map(range => formatPercentage(range.upper!, RANGE_DECIMAL_PLACES)).join(', ')}. Outer ranges include overflow.</>}</dd>

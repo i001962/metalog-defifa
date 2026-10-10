@@ -28,6 +28,7 @@ it('creates unequal ranges and recovers their curve-derived mint without sending
       resolutionRule: 'The ratified scorecard controls payouts.',
       entryOpensAt: now + 120, entryClosesAt: now + 600, resolvesAt: now + 900,
       rangeBoundaries: [-8, -1, 0.25, 6], unitPriceWei: '1000000000000',
+      defaultAttestationDelegate: fork.accounts[1],
     })
     const account = fork.accounts[0]
     const values = new Map<string, string>()
@@ -104,6 +105,10 @@ it('creates unequal ranges and recovers their curve-derived mint without sending
     expect(market.definition).toEqual(definition)
     expect(market.tiers.map(tier => tier.supply)).toEqual(['2', '36', '15', '42', '5'])
     expect(market.potWei).toBe(request.value.toString())
+    for (const tierId of [1, 2, 3, 4, 5]) {
+      expect(await fork.client.readContract({ address: market.hook, abi: DEFIFA_ABI.DefifaHook, functionName: 'getTierDelegateOf', args: [account, BigInt(tierId)] })).toBe(definition.defaultAttestationDelegate)
+    }
+    expect(request.details).toContainEqual({ label: 'Voting delegate', value: definition.defaultAttestationDelegate })
     sent.push({ title: 'Recovered custom-range curve entry', hash: recovered.transactionHash, blockNumber: String(recovered.blockNumber) })
   } finally {
     if (originalRpcConfiguration === undefined) delete process.env.METALOG_RPC_URLS

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { allocateManualPositions, allocatePositions, MAX_POSITIONS, positionDensities } from '../src/domain/allocation'
 import { cdf, coefficientsFromMoments, densityBuckets, parseCoefficientFields, parseCoefficients, pdf, quantile, validateCoefficients } from '../src/domain/distribution'
-import { decodeMarketDefinition, encodeMarketDefinition, marketRanges, MAX_ENTRY_DURATION_SECONDS, MAX_RESOLUTION_DURATION_SECONDS, MAX_TIMESTAMP_SECONDS, MAX_UNIT_PRICE_WEI, validateMarket, type MarketDefinition } from '../src/domain/market'
+import { decodeMarketDefinition, encodeMarketDefinition, marketRanges, MAX_ENTRY_DURATION_SECONDS, MAX_RESOLUTION_DURATION_SECONDS, MAX_TIMESTAMP_SECONDS, MAX_UNIT_PRICE_WEI, parseDefaultDelegate, validateMarket, type MarketDefinition } from '../src/domain/market'
 import { binForOutcome, createCustomRanges, createRanges, formatPercentage, MAX_RANGE_BOUNDARY, MAX_RANGE_COUNT, MAX_RANGE_WIDTH, MIN_RANGE_WIDTH, parseRangeBoundaries, validateRangeWidth } from '../src/domain/ranges'
 
 const definition: MarketDefinition = {
@@ -337,6 +337,19 @@ describe('Ranges and indivisible positions', () => {
 })
 
 describe('Immutable market definitions', () => {
+  it('validates and canonicalizes an optional default delegate in immutable metadata', () => {
+    const address = '0x52908400098527886E0F7030069857D2E4169EE7'
+    const market = validateMarket({ ...definition, defaultAttestationDelegate: address.toLowerCase() })
+    expect(market.defaultAttestationDelegate).toBe(address)
+    expect(decodeMarketDefinition(encodeMarketDefinition(market))).toEqual(market)
+    for (const empty of [undefined, '', ' ', '0x0000000000000000000000000000000000000000']) {
+      expect(parseDefaultDelegate(empty)).toBeUndefined()
+      expect(validateMarket({ ...definition, defaultAttestationDelegate: empty })).not.toHaveProperty('defaultAttestationDelegate')
+    }
+    for (const invalid of [null, 1, 'jango.eth', '0x1234', '0x52908400098527886e0F7030069857D2E4169EE7']) {
+      expect(() => validateMarket({ ...definition, defaultAttestationDelegate: invalid })).toThrow()
+    }
+  })
   it('round-trips explicit cutoffs without introducing a uniform range configuration', () => {
     const boundaries = [-10, -0.0003, 0, 0.5, 2.75]
     const market = validateMarket({ ...definition, rangeCount: undefined, rangeWidth: undefined, rangeBoundaries: boundaries })
