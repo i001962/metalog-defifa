@@ -1,0 +1,635 @@
+import {
+  BaseError, ContractFunctionRevertedError, decodeAbiParameters, decodeFunctionData, encodeAbiParameters,
+  encodeFunctionData, getAbiItem, parseAbi, parseEventLogs, zeroAddress,
+  type Address, type Hex, type PublicClient, type TransactionReceipt,
+} from 'viem'
+import { createHookMetadata, hookMetadataId } from '@bananapus/nana-sdk-core'
+import { NATIVE_TOKEN, projectNumber, readMarketAt, signer, type MarketSnapshot } from './defifa'
+import { assertChain, contractRead, DEFIFA_ABI, deploymentForChain, sameAddress, verifyDefifaDeployment } from './defifa-deployment'
+import { publicClientForChain } from './wallet'
+import type { PreparedTransaction } from './transaction'
+import { SCORECARD_WEIGHT_TOTAL, type TierWeight } from '../domain/scorecard'
+import { MAX_POSITIONS } from '../domain/allocation'
+export { SCORECARD_WEIGHT_TOTAL, scorecardWeightsFromPercentages, type TierWeight } from '../domain/scorecard'
+
+const TOKEN_MULTIPLIER = 1_000_000_000n
+const TOKEN_PAGE_SIZE = 200
+const MAX_LOG_REQUESTS = 16
+const MAX_SCORECARDS_PER_PAGE = 100
+const STATE_NAMES = ['Pending', 'Active', 'Defeated', 'Succeeded', 'Queued', 'Ratified'] as const
+const ERC20_ABI = parseAbi(['function decimals() view returns (uint8)', 'event Transfer(address indexed from,address indexed to,uint256 value)'])
+
+export type OwnedPosition = { tokenId: string; tierId: number }
+export type LifecyclePageOptions = { blockNumber?: string; tokenCursor?: string; scorecardCursor?: string }
+export type ScorecardSnapshot = {
+  scorecardId: string
+  weights: TierWeight[]
+  submitter: Address
+  state: number
+  stateName: string
+  submittedAt: number
+  attestationsBegin: number
+  gracePeriodEnds: number
+  attestationCount: string
+  accountWeight: string | null
+  hasAttested: boolean
+  canAttest: boolean
+  canRevoke: boolean
+  canRatify: boolean
+}
+export type LifecycleSnapshot = {
+  market: MarketSnapshot
+  account: Address | null
+  inventory: {
+    tokens: OwnedPosition[]
+    totalOwned: string
+    totalCandidates: string
+    nextCursor: string | null
+    complete: boolean
+  }
+  delegates: { tierId: number; delegate: Address }[]
+  scorecards: ScorecardSnapshot[]
+  scorecardsNextCursor: string | null
+  scorecardsComplete: boolean
+  attestationGraceSeconds: number
+  timelockSeconds: number
+  noContestAfter: number
+  canSubmitScorecard: boolean
+  canDelegate: boolean
+  canFulfill: boolean
+  canTriggerNoContest: boolean
+  cashOutMode: 'refund' | 'cash-out' | 'no-contest-refund' | null
+}
+export type LifecycleAction =
+  | { kind: 'transfer'; tokenId: string; to: Address }
+  | { kind: 'delegate'; tierIds: number[]; delegatee: Address }
+  | { kind: 'submit-scorecard'; weights: TierWeight[] }
+  | { kind: 'attest' | 'revoke'; scorecardId: string }
+  | { kind: 'ratify'; weights: TierWeight[] }
+  | { kind: 'fulfill' | 'no-contest' }
+  | { kind: 'cash-out'; tokenIds: string[]; minReclaimedWei: string }
+export type CashOutQuote = {
+  blockNumber: string
+  reclaimWei: string
+  defifaTokenWei: string
+  baseProtocolTokenWei: string
+  defifaToken: Address
+  baseProtocolToken: Address
+}
+export type LifecycleRequest = Pick<PreparedTransaction, 'chainId' | 'account' | 'to' | 'data' | 'value'>
+
+type NativeWeight = { id: bigint; cashOutWeight: bigint }
+type SubmittedArgs = { gameId: bigint; scorecardId: bigint; tierWeights: NativeWeight[]; caller: Address }
+type TransferArgs = { from: Address; to: Address; tokenId: bigint }
+
+function uint(value: string, name: string, zero = true): bigint {
+  if (!/^(0|[1-9]\d{0,77})$/.test(value) || BigInt(value) >= 1n << 256n || (!zero && value === '0')) {
+    throw new Error(`Enter a valid ${name}.`)
+  }
+  return BigInt(value)
+}
+
+function nativeWeights(market: MarketSnapshot, weights: TierWeight[]): NativeWeight[] {
+  if (!Array.isArray(weights) || !weights.length || weights.length > market.ranges.length) {
+    throw new Error('Provide a scorecard for this market’s ranges.')
+  }
+  let previous = 0
+  const result = weights.map(item => {
+    if (!Number.isSafeInteger(item.tierId) || item.tierId <= previous
+      || !market.ranges.some(range => range.tierId === item.tierId)) {
+      throw new Error('Scorecard ranges must be unique and in ascending order.')
+    }
+    previous = item.tierId
+    return { id: BigInt(item.tierId), cashOutWeight: uint(item.weight, 'scorecard weight') }
+  })
+  if (result.reduce((sum, item) => sum + item.cashOutWeight, 0n) !== SCORECARD_WEIGHT_TOTAL) {
+    throw new Error('The scorecard must assign exactly 100% of the pot.')
+  }
+  return result
+}
+
+function tokenIdsFor(market: MarketSnapshot, ids: readonly string[]): bigint[] {
+  if (!Array.isArray(ids) || !ids.length || ids.length > MAX_POSITIONS) throw new Error(`Select between 1 and ${MAX_POSITIONS} NFTs.`)
+  const result = ids.map(value => uint(value, 'NFT token ID', false))
+  if (new Set(result.map(String)).size !== result.length) throw new Error('Select each NFT only once.')
+  for (const id of result) {
+    if (id % TOKEN_MULTIPLIER === 0n || !market.ranges.some(range => BigInt(range.tierId) === id / TOKEN_MULTIPLIER)) {
+      throw new Error('A selected NFT is outside this market’s ranges.')
+    }
+  }
+  return result.sort((a, b) => a < b ? -1 : a > b ? 1 : 0)
+}
+
+const modeFor = (phase: number): LifecycleSnapshot['cashOutMode'] =>
+  phase === 1 || phase === 2 ? 'refund' : phase === 4 ? 'cash-out' : phase === 5 ? 'no-contest-refund' : null
+
+async function freshMarket(market: MarketSnapshot): Promise<{ client: PublicClient; market: MarketSnapshot }> {
+  const client = publicClientForChain(market.chainId)
+  await assertChain(client, market.chainId)
+  const block = await client.getBlock()
+  await verifyDefifaDeployment(client, market.chainId, block.number)
+  const current = await readMarketAt(client, market.chainId, market.projectId, block.number, Number(block.timestamp))
+  if (!sameAddress(current.hook, market.hook)) throw new Error('The market contract changed. Reload it before continuing.')
+  return { client, market: current }
+}
+
+function readAt(client: PublicClient, market: MarketSnapshot) {
+  return <T>(address: Address, contract: keyof typeof DEFIFA_ABI, fn: string, args: readonly unknown[] = []) =>
+    contractRead<T>(client, address, contract, fn, args, BigInt(market.blockNumber))
+}
+
+async function assertOwned(client: PublicClient, market: MarketSnapshot, ids: readonly bigint[], account: Address) {
+  const read = readAt(client, market)
+  const owners = await Promise.all(ids.map(id => read<Address>(market.hook, 'DefifaHook', 'ownerOf', [id])))
+  if (owners.some(owner => !sameAddress(owner, account))) throw new Error('Your wallet no longer owns every selected NFT.')
+}
+
+function nonexistentToken(error: unknown): boolean {
+  if (!(error instanceof BaseError)) return false
+  const revert = error.walk(cause => cause instanceof ContractFunctionRevertedError)
+  return revert instanceof ContractFunctionRevertedError && revert.data?.errorName === 'ERC721NonexistentToken'
+}
+
+async function readInventory(client: PublicClient, market: MarketSnapshot, account: Address | null, cursor?: string) {
+  const empty = { tokens: [] as OwnedPosition[], totalOwned: '0', totalCandidates: '0', nextCursor: null, complete: true }
+  if (!account) return empty
+  const read = readAt(client, market)
+  const d = deploymentForChain(market.chainId)
+  const [owned, tiers] = await Promise.all([
+    read<bigint>(market.hook, 'DefifaHook', 'balanceOf', [account]),
+    read<{ id: number; initialSupply: number; remainingSupply: number }[]>(
+      d.store, 'JB721TiersHookStore', 'tiersOf', [market.hook, [], false, 0n, 128n],
+    ),
+  ])
+  // Store.recordBurn only increments numberOfBurnedFor. It never refills remainingSupply:
+  // initialSupply - remainingSupply therefore enumerates every ID ever minted, including burns.
+  const minted = tiers.map(tier => ({ tierId: Number(tier.id), count: BigInt(tier.initialSupply) - BigInt(tier.remainingSupply) }))
+  if (minted.some(tier => tier.count < 0n)) throw new Error('The NFT supply returned an invalid count.')
+  const total = minted.reduce((sum, tier) => sum + tier.count, 0n)
+  const start = cursor === undefined ? 0n : uint(cursor, 'inventory cursor')
+  if (start > total) throw new Error('The inventory cursor is outside this snapshot.')
+  if (owned === 0n) return { ...empty, totalCandidates: total.toString() }
+  const end = start + BigInt(TOKEN_PAGE_SIZE) < total ? start + BigInt(TOKEN_PAGE_SIZE) : total
+  const candidates: OwnedPosition[] = []
+  let offset = 0n
+  for (const tier of minted) {
+    const low = start > offset ? start - offset : 0n
+    const high = end < offset + tier.count ? end - offset : tier.count
+    for (let i = low; i < high; i++) candidates.push({ tierId: tier.tierId, tokenId: (BigInt(tier.tierId) * TOKEN_MULTIPLIER + i + 1n).toString() })
+    offset += tier.count
+    if (offset >= end) break
+  }
+  const checks = await Promise.all(candidates.map(async token => {
+    try {
+      return sameAddress(await read<Address>(market.hook, 'DefifaHook', 'ownerOf', [BigInt(token.tokenId)]), account) ? token : null
+    } catch (error) {
+      // A confirmed burned ID is not an RPC outage. Only this decoded native error is omitted.
+      if (nonexistentToken(error)) return null
+      throw error
+    }
+  }))
+  const tokens = checks.filter((token): token is OwnedPosition => token !== null)
+  const complete = end === total || (start === 0n && BigInt(tokens.length) === owned)
+  return { tokens, totalOwned: owned.toString(), totalCandidates: total.toString(), nextCursor: complete ? null : end.toString(), complete }
+}
+
+/** Bounded binary search finds the first block where scorecard submissions could exist. */
+async function firstScoringBlock(client: PublicClient, market: MarketSnapshot): Promise<bigint> {
+  const floor = BigInt(deploymentForChain(market.chainId).deployerBlock)
+  let high = BigInt(market.blockNumber)
+  if (floor > high) throw new Error('The requested snapshot precedes the configured Defifa deployment.')
+  let low = floor
+  let distance = 1n
+  let reads = 0
+  // Start near this game, not at deployment. Pruned public RPCs can serve a new game
+  // while rejecting an unrelated years-old midpoint of deployment→head.
+  while (high > floor && reads < 64) {
+    const probe = BigInt(market.blockNumber) - distance > floor ? BigInt(market.blockNumber) - distance : floor
+    const block = await client.getBlock({ blockNumber: probe })
+    reads++
+    if (Number(block.timestamp) < market.definition.entryClosesAt) { low = probe + 1n; break }
+    high = probe
+    if (probe === floor) { low = floor; break }
+    distance *= 2n
+  }
+  for (; low < high && reads < 64; reads++) {
+    const middle = (low + high) / 2n
+    const block = await client.getBlock({ blockNumber: middle })
+    if (Number(block.timestamp) < market.definition.entryClosesAt) low = middle + 1n
+    else high = middle
+  }
+  if (low !== high) throw new Error('The scorecard history range could not be resolved within its read limit.')
+  return low
+}
+
+async function readScorecards(
+  client: PublicClient, market: MarketSnapshot, account: Address | null, grace: number, cursor?: string,
+): Promise<{ scorecards: ScorecardSnapshot[]; next: string | null; complete: boolean }> {
+  if (market.phase < 3) return { scorecards: [], next: null, complete: true }
+  const head = BigInt(market.blockNumber)
+  const end = cursor === undefined ? head : uint(cursor, 'scorecard cursor')
+  if (end > head) throw new Error('The scorecard cursor is outside this snapshot.')
+  const first = await firstScoringBlock(client, market)
+  if (end < first) return { scorecards: [], next: null, complete: true }
+  const event = getAbiItem({ abi: DEFIFA_ABI.DefifaGovernor, name: 'ScorecardSubmitted' })
+  if (!event || event.type !== 'event') throw new Error('The scorecard event ABI is unavailable.')
+  // Ask for the whole indexed game history first. Reduce only an explicitly unsupported
+  // log range/result size; transport outages and rate limits remain errors. Accepted chunks
+  // are continued automatically, bounded by 16 RPC calls and 100 proposals per page.
+  let nextEnd = end
+  let span = end - first + 1n
+  const collected: Awaited<ReturnType<PublicClient['getLogs']>> = []
+  let madeProgress = false
+  for (let requests = 0; nextEnd >= first && requests < MAX_LOG_REQUESTS; requests++) {
+    const fromBlock = nextEnd - first + 1n > span ? nextEnd - span + 1n : first
+    try {
+      const result = await client.getLogs({ address: market.governor, event, args: { gameId: projectNumber(market.projectId) }, fromBlock, toBlock: nextEnd, strict: true })
+      if (collected.length + result.length > MAX_SCORECARDS_PER_PAGE) {
+        if (span === 1n) {
+          if (collected.length) break
+          throw new Error('A single block exceeds the 100-scorecard read limit.')
+        }
+        span = span > 1n ? span / 2n : 1n
+        continue
+      }
+      collected.push(...result)
+      madeProgress = true
+      nextEnd = fromBlock - 1n
+      if (collected.length === MAX_SCORECARDS_PER_PAGE) break
+    } catch (error) {
+      if (!isLogRangeLimit(error) || span === 1n) throw error
+      span = span > 1n ? span / 2n : 1n
+    }
+  }
+  if (!madeProgress) throw new Error('This RPC’s log range limit could not be resolved within 16 requests. Use another RPC and retry.')
+  const logs = parseEventLogs({ abi: DEFIFA_ABI.DefifaGovernor, logs: collected, eventName: 'ScorecardSubmitted', strict: true })
+    .sort((a, b) => a.blockNumber === b.blockNumber ? a.logIndex - b.logIndex : a.blockNumber < b.blockNumber ? -1 : 1)
+  const read = readAt(client, market)
+  const id = projectNumber(market.projectId)
+  const timestampByBlock = new Map<string, Promise<number>>()
+  const cards = await Promise.all(logs.map(async log => {
+    const args = log.args as unknown as SubmittedArgs
+    if (args.gameId !== id || log.blockNumber === null || log.removed) throw new Error('The scorecard log does not match this snapshot.')
+    const blockKey = log.blockNumber.toString()
+    if (!timestampByBlock.has(blockKey)) timestampByBlock.set(blockKey, client.getBlock({ blockNumber: log.blockNumber }).then(block => Number(block.timestamp)))
+    const submittedAt = await timestampByBlock.get(blockKey)!
+    const attestationsBegin = Math.max(market.definition.resolvesAt, submittedAt + 1)
+    const [state, count, hasAttested, weight] = await Promise.all([
+      read<number>(market.governor, 'DefifaGovernor', 'stateOf', [id, args.scorecardId]),
+      read<bigint>(market.governor, 'DefifaGovernor', 'attestationCountOf', [id, args.scorecardId]),
+      account ? read<boolean>(market.governor, 'DefifaGovernor', 'hasAttestedTo', [id, args.scorecardId, account]) : false,
+      account ? read<bigint>(market.governor, 'DefifaGovernor', 'getBWAAttestationWeight', [id, args.scorecardId, account, submittedAt - 1]) : null,
+    ])
+    if (!STATE_NAMES[Number(state)]) throw new Error('The governor returned an unknown scorecard state.')
+    return {
+      scorecardId: args.scorecardId.toString(), weights: args.tierWeights.map(item => ({ tierId: Number(item.id), weight: item.cashOutWeight.toString() })),
+      submitter: args.caller, state: Number(state), stateName: STATE_NAMES[Number(state)], submittedAt, attestationsBegin,
+      gracePeriodEnds: attestationsBegin + grace, attestationCount: count.toString(), accountWeight: weight?.toString() ?? null,
+      hasAttested, canAttest: !!account && market.phase === 3 && [1, 3, 4].includes(Number(state)) && !hasAttested && weight !== null && weight > 0n,
+      canRevoke: !!account && Number(state) === 1 && hasAttested,
+      canRatify: !!account && market.phase === 3 && Number(state) === 3,
+    }
+  }))
+  // The native state is authority. Proposal quorum and quorumReachedAt are private; a base
+  // quorum or an invented timelock countdown would give a false impression of readiness.
+  return { scorecards: cards.reverse(), next: nextEnd >= first ? nextEnd.toString() : null, complete: nextEnd < first }
+}
+
+function isLogRangeLimit(error: unknown): boolean {
+  // Provider JSON-RPC wrappers retain the original details in the cause chain. Deliberately
+  // exclude generic -32005/rate-limit errors: retrying a smaller range cannot fix those.
+  let current: unknown = error
+  for (let depth = 0; current && typeof current === 'object' && depth < 8; depth++) {
+    const value = current as { message?: unknown; details?: unknown; cause?: unknown }
+    const text = `${typeof value.message === 'string' ? value.message : ''} ${typeof value.details === 'string' ? value.details : ''}`
+    if (/block range (?:is )?too (?:large|wide)|(?:query|response) (?:returned|size exceeded|exceeds).*?(?:results|size|limit)|query returned more than|(?:limited to|maximum|exceeds?).*?\d[\d,]*\s*(?:blocks|block range)|(?:eth_getlogs|getlogs).*?block range.*?(?:limit|exceed)/i.test(text)) return true
+    current = value.cause
+  }
+  return false
+}
+
+/** A page is bounded, explicit about completeness, and read at the same block as its market. */
+export async function readLifecycle(
+  chainId: number, projectId: string, account?: Address, options: LifecyclePageOptions = {},
+): Promise<LifecycleSnapshot> {
+  const client = publicClientForChain(chainId)
+  await assertChain(client, chainId)
+  const owner = account ? signer(account) : null
+  const block = await client.getBlock(options.blockNumber === undefined ? undefined : { blockNumber: uint(options.blockNumber, 'snapshot block') })
+  await verifyDefifaDeployment(client, chainId, block.number)
+  const market = await readMarketAt(client, chainId, projectId, block.number, Number(block.timestamp))
+  const d = deploymentForChain(chainId)
+  const read = readAt(client, market)
+  const id = projectNumber(projectId)
+  const [grace, timelock, safety, inventory, delegates] = await Promise.all([
+    read<bigint>(market.governor, 'DefifaGovernor', 'attestationGracePeriodOf', [id]),
+    read<bigint>(market.governor, 'DefifaGovernor', 'timelockDurationOf', [id]),
+    read<readonly [bigint, number]>(d.deployer, 'DefifaDeployer', 'safetyParamsOf', [id]),
+    readInventory(client, market, owner, options.tokenCursor),
+    owner ? Promise.all(market.ranges.map(async range => ({ tierId: range.tierId, delegate: await read<Address>(market.hook, 'DefifaHook', 'getTierDelegateOf', [owner, BigInt(range.tierId)]) }))) : [],
+  ])
+  const cards = await readScorecards(client, market, owner, Number(grace), options.scorecardCursor)
+  return {
+    market, account: owner, inventory, delegates, scorecards: cards.scorecards,
+    scorecardsNextCursor: cards.next, scorecardsComplete: cards.complete,
+    attestationGraceSeconds: Number(grace), timelockSeconds: Number(timelock),
+    noContestAfter: market.definition.entryClosesAt + Number(safety[1]),
+    canSubmitScorecard: !!owner && market.phase === 3,
+    canDelegate: !!owner && market.phase === 1,
+    canFulfill: !!owner && market.phase === 4 && !market.commitmentsFulfilled,
+    canTriggerNoContest: !!owner && market.phase === 5 && !market.noContestTriggered,
+    cashOutMode: modeFor(market.phase),
+  }
+}
+
+function cashOutMetadata(chainId: number, ids: readonly bigint[]): Hex {
+  return createHookMetadata([hookMetadataId(deploymentForChain(chainId).implementation, 'cashOut')], [
+    encodeAbiParameters([{ type: 'uint256[]' }], [ids]),
+  ])
+}
+
+function cashOutArgs(market: MarketSnapshot, account: Address, ids: readonly bigint[], minimum: bigint) {
+  return [account, projectNumber(market.projectId), 0n, NATIVE_TOKEN, minimum, account, cashOutMetadata(market.chainId, ids)] as const
+}
+
+async function quoteAt(client: PublicClient, market: MarketSnapshot, ids: readonly bigint[], account: Address): Promise<CashOutQuote> {
+  if (!modeFor(market.phase)) throw new Error('NFTs cannot be cashed out during this game phase.')
+  if (market.phase === 5 && !market.noContestTriggered) throw new Error('Open the native no-contest refunds before cashing out.')
+  await assertOwned(client, market, ids, account)
+  const d = deploymentForChain(market.chainId)
+  const read = readAt(client, market)
+  const [simulation, rewards, defifaToken, baseProtocolToken] = await Promise.all([
+    client.simulateContract({ address: d.terminal, abi: DEFIFA_ABI.JBMultiTerminal, functionName: 'cashOutTokensOf', args: cashOutArgs(market, account, ids, 0n), account, blockNumber: BigInt(market.blockNumber) }),
+    read<readonly [bigint, bigint]>(market.hook, 'DefifaHook', 'tokensClaimableFor', [ids]),
+    read<Address>(market.hook, 'DefifaHook', 'DEFIFA_TOKEN'),
+    read<Address>(market.hook, 'DefifaHook', 'BASE_PROTOCOL_TOKEN'),
+  ])
+  const decimals = await Promise.all([defifaToken, baseProtocolToken].map(address => client.readContract({ address, abi: ERC20_ABI, functionName: 'decimals', blockNumber: BigInt(market.blockNumber) })))
+  if (decimals.some(value => value !== 18)) throw new Error('The protocol reward token decimals are not supported.')
+  return {
+    blockNumber: market.blockNumber, reclaimWei: (simulation.result as bigint).toString(),
+    defifaTokenWei: rewards[0].toString(), baseProtocolTokenWei: rewards[1].toString(), defifaToken, baseProtocolToken,
+  }
+}
+
+export async function readCashOutQuote(market: MarketSnapshot, tokenIds: string[], account: Address): Promise<CashOutQuote> {
+  const current = await freshMarket(market)
+  return quoteAt(current.client, current.market, tokenIdsFor(current.market, tokenIds), signer(account))
+}
+
+function actionCall(market: MarketSnapshot, action: LifecycleAction, account: Address): Pick<PreparedTransaction, 'to' | 'data' | 'value' | 'title' | 'details'> {
+  const d = deploymentForChain(market.chainId)
+  const id = projectNumber(market.projectId)
+  let to: Address = market.governor
+  let abi = DEFIFA_ABI.DefifaGovernor
+  let fn: string
+  let args: readonly unknown[]
+  let title: string
+  const details = [{ label: 'Market', value: `${market.projectId} · ${market.definition.prompt}` }]
+  switch (action.kind) {
+    case 'transfer': {
+      const [tokenId] = tokenIdsFor(market, [action.tokenId])
+      const recipient = signer(action.to)
+      if (sameAddress(recipient, account)) throw new Error('Choose a different recipient for this NFT.')
+      to = market.hook; abi = DEFIFA_ABI.DefifaHook; fn = 'safeTransferFrom'; args = [account, recipient, tokenId]; title = 'Send NFT'
+      details.push({ label: 'NFT', value: tokenId.toString() }, { label: 'Recipient', value: recipient })
+      break
+    }
+    case 'delegate': {
+      const delegate = signer(action.delegatee)
+      if (!Array.isArray(action.tierIds) || !action.tierIds.length || action.tierIds.length > market.ranges.length
+        || new Set(action.tierIds).size !== action.tierIds.length || action.tierIds.some(tierId => !market.ranges.some(range => range.tierId === tierId))) {
+        throw new Error('Select unique ranges from this market to delegate.')
+      }
+      to = market.hook; abi = DEFIFA_ABI.DefifaHook; fn = 'setTierDelegatesTo'
+      args = [action.tierIds.map(tierId => ({ delegatee: delegate, tierId: BigInt(tierId) }))]; title = 'Delegate attestation power'
+      details.push({ label: 'Ranges', value: action.tierIds.join(', ') }, { label: 'Delegate', value: delegate })
+      break
+    }
+    case 'submit-scorecard': case 'ratify': {
+      const weights = nativeWeights(market, action.weights)
+      fn = action.kind === 'ratify' ? 'ratifyScorecardFrom' : 'submitScorecardFor'; args = [id, weights]
+      title = action.kind === 'ratify' ? 'Ratify scorecard' : 'Propose scorecard'
+      details.push(...weights.map(item => ({ label: `Range ${item.id}`, value: `${item.cashOutWeight} / ${SCORECARD_WEIGHT_TOTAL}` })))
+      break
+    }
+    case 'attest': case 'revoke':
+      fn = action.kind === 'attest' ? 'attestToScorecardFrom' : 'revokeAttestationFrom'; args = [id, uint(action.scorecardId, 'scorecard ID', false)]
+      title = action.kind === 'attest' ? 'Attest to scorecard' : 'Revoke attestation'
+      details.push({ label: 'Scorecard', value: action.scorecardId }); break
+    case 'fulfill': case 'no-contest':
+      to = d.deployer; abi = DEFIFA_ABI.DefifaDeployer
+      fn = action.kind === 'fulfill' ? 'fulfillCommitmentsOf' : 'triggerNoContestFor'; args = [id]
+      title = action.kind === 'fulfill' ? 'Fulfill game commitments' : 'Open no-contest refunds'; break
+    case 'cash-out': {
+      const ids = tokenIdsFor(market, action.tokenIds)
+      const minimum = uint(action.minReclaimedWei, 'minimum reclaim amount')
+      to = d.terminal; abi = DEFIFA_ABI.JBMultiTerminal; fn = 'cashOutTokensOf'; args = cashOutArgs(market, account, ids, minimum)
+      title = market.phase === 4 ? 'Cash out NFTs and claim protocol tokens' : 'Refund NFTs'
+      details.push({ label: 'NFTs to burn', value: ids.join(', ') }, { label: 'Minimum ETH (wei)', value: minimum.toString() }); break
+    }
+  }
+  return { to, data: encodeFunctionData({ abi, functionName: fn, args }), value: 0n, title, details }
+}
+
+async function assertAction(client: PublicClient, market: MarketSnapshot, action: LifecycleAction, account: Address) {
+  // Build first so invalid inputs never cause arbitrary reads.
+  actionCall(market, action, account)
+  const read = readAt(client, market)
+  const id = projectNumber(market.projectId)
+  switch (action.kind) {
+    case 'transfer': await assertOwned(client, market, tokenIdsFor(market, [action.tokenId]), account); break
+    case 'delegate': if (market.phase !== 1) throw new Error('Attestation delegation can only change while entry is open.'); break
+    case 'submit-scorecard':
+      if (market.phase !== 3) throw new Error('Scorecards can only be proposed during the native scoring phase.')
+      if (nativeWeights(market, action.weights).some(weight => weight.cashOutWeight > 0n && BigInt(market.tiers.find(tier => BigInt(tier.tierId) === weight.id)!.supply) === 0n)) {
+        throw new Error('A range with no circulating NFTs cannot receive a scorecard payout weight.')
+      }
+      break
+    case 'attest': case 'revoke': {
+      const cardId = uint(action.scorecardId, 'scorecard ID', false)
+      const [state, attested] = await Promise.all([
+        read<number>(market.governor, 'DefifaGovernor', 'stateOf', [id, cardId]),
+        read<boolean>(market.governor, 'DefifaGovernor', 'hasAttestedTo', [id, cardId, account]),
+      ])
+      if (action.kind === 'attest' && (market.phase !== 3 || ![1, 3, 4].includes(Number(state)) || attested)) throw new Error('This wallet cannot attest to that scorecard now.')
+      if (action.kind === 'revoke' && (Number(state) !== 1 || !attested)) throw new Error('An attestation can only be revoked while its scorecard is active.')
+      break
+    }
+    case 'ratify': {
+      const cardId = await read<bigint>(market.governor, 'DefifaGovernor', 'scorecardIdOf', [market.hook, nativeWeights(market, action.weights)])
+      const state = await read<number>(market.governor, 'DefifaGovernor', 'stateOf', [id, cardId])
+      if (market.phase !== 3 || Number(state) !== 3) throw new Error('The scorecard has not completed the native quorum, grace and timelock requirements.')
+      break
+    }
+    case 'fulfill': if (market.phase !== 4 || market.commitmentsFulfilled) throw new Error('There are no pending ratified game commitments.'); break
+    case 'no-contest': if (market.phase !== 5 || market.noContestTriggered) throw new Error('Native no-contest refunds are not awaiting activation.'); break
+    case 'cash-out': {
+      const quote = await quoteAt(client, market, tokenIdsFor(market, action.tokenIds), account)
+      if (BigInt(quote.reclaimWei) < uint(action.minReclaimedWei, 'minimum reclaim amount')) throw new Error('The cash-out amount fell below the reviewed minimum. Refresh its quote.')
+      break
+    }
+  }
+}
+
+export async function prepareLifecycleAction(market: MarketSnapshot, action: LifecycleAction, account: Address): Promise<PreparedTransaction> {
+  action = structuredClone(action)
+  const owner = signer(account)
+  const current = await freshMarket(market)
+  await assertAction(current.client, current.market, action, owner)
+  const request = { chainId: current.market.chainId, account: owner, ...actionCall(current.market, action, owner) }
+  return {
+    ...request,
+    reverify: async () => {
+      const latest = await freshMarket(current.market)
+      if (action.kind === 'cash-out' && latest.market.phase !== current.market.phase) throw new Error('The game phase changed. Review this cash-out again.')
+      await assertAction(latest.client, latest.market, action, owner)
+    },
+    verifyReceipt: receipt => verifyLifecycleReceipt(request, receipt),
+  }
+}
+
+function receiptEvents<T>(receipt: TransactionReceipt, contract: keyof typeof DEFIFA_ABI, address: Address, name: string): T[] {
+  return parseEventLogs({ abi: DEFIFA_ABI[contract], logs: receipt.logs, eventName: name, strict: true })
+    .filter(log => sameAddress(log.address, address)).map(log => log.args as T)
+}
+
+function exactWeights(a: NativeWeight[], b: NativeWeight[]): boolean {
+  return a.length === b.length && a.every((item, index) => item.id === b[index].id && item.cashOutWeight === b[index].cashOutWeight)
+}
+
+/** Reconstruct only supported direct native calls. This is also the reload-recovery authority. */
+export async function verifyLifecycleReceipt(request: LifecycleRequest, receipt: TransactionReceipt): Promise<void> {
+  if (receipt.status !== 'success' || request.value !== 0n) throw new Error('The receipt does not confirm a native lifecycle action.')
+  const account = signer(request.account)
+  const client = publicClientForChain(request.chainId)
+  const d = await verifyDefifaDeployment(client, request.chainId, receipt.blockNumber)
+  let contract: keyof typeof DEFIFA_ABI
+  if (sameAddress(request.to, d.governor)) contract = 'DefifaGovernor'
+  else if (sameAddress(request.to, d.deployer)) contract = 'DefifaDeployer'
+  else if (sameAddress(request.to, d.terminal)) contract = 'JBMultiTerminal'
+  else contract = 'DefifaHook'
+  const decoded = decodeFunctionData({ abi: DEFIFA_ABI[contract], data: request.data })
+  const args = decoded.args as readonly unknown[]
+  let id: bigint
+  if (contract === 'DefifaHook') id = await contractRead<bigint>(client, request.to, contract, 'projectId', [], receipt.blockNumber)
+  else id = BigInt(args[contract === 'JBMultiTerminal' ? 1 : 0] as bigint)
+  const block = await client.getBlock({ blockNumber: receipt.blockNumber })
+  const market = await readMarketAt(client, request.chainId, id.toString(), block.number, Number(block.timestamp))
+  const read = readAt(client, market)
+  let action: LifecycleAction
+  switch (decoded.functionName) {
+    case 'safeTransferFrom':
+      if (args.length !== 3 || !sameAddress(args[0], account)) throw new Error('The recorded NFT transfer is not supported.')
+      action = { kind: 'transfer', to: args[1] as Address, tokenId: String(args[2]) }; break
+    case 'setTierDelegatesTo': {
+      const delegations = args[0] as { delegatee: Address; tierId: bigint }[]
+      if (!delegations.length || delegations.some(item => !sameAddress(item.delegatee, delegations[0].delegatee))) throw new Error('The recorded delegation is not supported.')
+      action = { kind: 'delegate', tierIds: delegations.map(item => Number(item.tierId)), delegatee: delegations[0].delegatee }; break
+    }
+    case 'submitScorecardFor': case 'ratifyScorecardFrom':
+      action = { kind: decoded.functionName === 'submitScorecardFor' ? 'submit-scorecard' : 'ratify', weights: (args[1] as NativeWeight[]).map(item => ({ tierId: Number(item.id), weight: item.cashOutWeight.toString() })) }; break
+    case 'attestToScorecardFrom': case 'revokeAttestationFrom':
+      action = { kind: decoded.functionName === 'attestToScorecardFrom' ? 'attest' : 'revoke', scorecardId: String(args[1]) }; break
+    case 'fulfillCommitmentsOf': action = { kind: 'fulfill' }; break
+    case 'triggerNoContestFor': action = { kind: 'no-contest' }; break
+    case 'cashOutTokensOf': {
+      if (!sameAddress(args[0], account) || args[2] !== 0n || !sameAddress(args[3], NATIVE_TOKEN) || !sameAddress(args[5], account)) {
+        throw new Error('The recorded cash-out holder, token or beneficiary is not supported.')
+      }
+      const metadata = args[6] as Hex
+      if (metadata.length > 14_000) throw new Error('The recorded cash-out metadata exceeds the selection limit.')
+      const [ids] = decodeAbiParameters([{ type: 'uint256[]' }], `0x${metadata.slice(130)}`)
+      action = { kind: 'cash-out', tokenIds: ids.map(String), minReclaimedWei: String(args[4]) }; break
+    }
+    default: throw new Error('This is not a supported Defifa lifecycle action.')
+  }
+  const expected = actionCall(market, action, account)
+  if (!sameAddress(expected.to, request.to) || expected.data !== request.data) throw new Error('The recorded lifecycle calldata does not match the supported action.')
+  switch (action.kind) {
+    case 'transfer': {
+      const transfers = receiptEvents<TransferArgs>(receipt, 'DefifaHook', market.hook, 'Transfer')
+      if (!transfers.some(item => item.tokenId === BigInt(action.tokenId) && sameAddress(item.from, account) && sameAddress(item.to, action.to))) {
+        throw new Error('The receipt does not confirm the reviewed NFT transfer.')
+      }
+      break
+    }
+    case 'delegate': {
+      const events = receiptEvents<{ delegator: Address; toDelegate: Address; caller: Address }>(receipt, 'DefifaHook', market.hook, 'DelegateChanged')
+      if (events.some(item => !sameAddress(item.delegator, account) || !sameAddress(item.toDelegate, action.delegatee) || !sameAddress(item.caller, account))) {
+        throw new Error('The confirmed tier delegate changes differ from the reviewed request.')
+      }
+      // Re-selecting an existing delegate is an idempotent successful call with no event.
+      // End-of-block state can include a later delegation; it cannot invalidate this receipt.
+      break
+    }
+    case 'submit-scorecard': {
+      const weights = nativeWeights(market, action.weights)
+      const cardId = await read<bigint>(market.governor, 'DefifaGovernor', 'scorecardIdOf', [market.hook, weights])
+      const events = receiptEvents<SubmittedArgs>(receipt, 'DefifaGovernor', d.governor, 'ScorecardSubmitted')
+      if (!events.some(item => item.gameId === id && item.scorecardId === cardId && sameAddress(item.caller, account) && exactWeights(item.tierWeights, weights))) {
+        throw new Error('The receipt does not confirm the complete reviewed scorecard.')
+      }
+      await read<number>(market.governor, 'DefifaGovernor', 'stateOf', [id, cardId]); break
+    }
+    case 'attest': case 'revoke': {
+      type Attestation = { gameId: bigint; scorecardId: bigint; caller: Address; account?: Address; weight: bigint }
+      const events = receiptEvents<Attestation>(receipt, 'DefifaGovernor', d.governor, action.kind === 'attest' ? 'ScorecardAttested' : 'AttestationRevoked')
+      if (!events.some(item => item.gameId === id && item.scorecardId === BigInt(action.scorecardId) && sameAddress(item.caller, account) && item.weight > 0n
+        && (action.kind === 'attest' || sameAddress(item.account, account)))) throw new Error('The receipt does not confirm the reviewed attestation change.')
+      // Another same-block transaction can revoke/restore this attestation. Its authenticated
+      // receipt event, not the later end-of-block getter, proves this request's effect.
+      break
+    }
+    case 'ratify': {
+      const weights = nativeWeights(market, action.weights)
+      const cardId = await read<bigint>(market.governor, 'DefifaGovernor', 'scorecardIdOf', [market.hook, weights])
+      const events = receiptEvents<{ gameId: bigint; scorecardId: bigint; caller: Address }>(receipt, 'DefifaGovernor', d.governor, 'ScorecardRatified')
+      const setWeights = receiptEvents<{ tierWeights: NativeWeight[]; caller: Address }>(receipt, 'DefifaHook', market.hook, 'TierCashOutWeightsSet')
+      const matched = market.ratifiedWeights?.every(item => BigInt(item.weight) === (weights.find(weight => weight.id === BigInt(item.tierId))?.cashOutWeight ?? 0n))
+      if (!events.some(item => item.gameId === id && item.scorecardId === cardId && sameAddress(item.caller, account))
+        || !setWeights.some(item => sameAddress(item.caller, d.governor) && exactWeights(item.tierWeights, weights))
+        || market.ratifiedScorecardId !== cardId.toString() || !matched || !market.commitmentsFulfilled || market.phase !== 4) {
+        throw new Error('The receipt does not confirm the ratified scorecard and native fulfillment.')
+      }
+      break
+    }
+    case 'fulfill':
+      if (!market.commitmentsFulfilled || market.phase !== 4) throw new Error('The game commitments are not confirmed fulfilled.'); break
+    case 'no-contest': {
+      const events = receiptEvents<{ gameId: bigint; caller: Address }>(receipt, 'DefifaDeployer', d.deployer, 'QueuedNoContest')
+      if (!events.some(item => item.gameId === id && sameAddress(item.caller, account)) || !market.noContestTriggered || market.phase !== 5) {
+        throw new Error('The receipt does not confirm native no-contest activation.')
+      }
+      break
+    }
+    case 'cash-out': {
+      const ids = tokenIdsFor(market, action.tokenIds)
+      const burns = receiptEvents<TransferArgs>(receipt, 'DefifaHook', market.hook, 'Transfer')
+        .filter(item => sameAddress(item.from, account) && sameAddress(item.to, zeroAddress)).map(item => item.tokenId).sort((a, b) => a < b ? -1 : a > b ? 1 : 0)
+      type CashOutEvent = { projectId: bigint; holder: Address; beneficiary: Address; reclaimAmount: bigint; cashOutCount: bigint; metadata: Hex; caller: Address }
+      const events = receiptEvents<CashOutEvent>(receipt, 'JBMultiTerminal', d.terminal, 'CashOutTokens')
+      if (burns.length !== ids.length || burns.some((tokenId, index) => tokenId !== ids[index]) || !events.some(item => item.projectId === id
+        && sameAddress(item.holder, account) && sameAddress(item.beneficiary, account) && sameAddress(item.caller, account) && item.cashOutCount === 0n
+        && item.reclaimAmount >= BigInt(action.minReclaimedWei) && item.metadata === cashOutMetadata(market.chainId, ids))) {
+        throw new Error('The receipt does not confirm every NFT burn and the reviewed reclaim amount.')
+      }
+      if (market.phase === 4) {
+        const claims = receiptEvents<{ beneficiary: Address; defifaTokenAmount: bigint; baseProtocolTokenAmount: bigint; caller: Address }>(receipt, 'DefifaHook', market.hook, 'ClaimedTokens')
+        const claim = claims.find(item => sameAddress(item.beneficiary, account) && sameAddress(item.caller, d.terminal))
+        if (!claim) throw new Error('The receipt does not confirm the protocol token claim.')
+        const tokens = await Promise.all([
+          read<Address>(market.hook, 'DefifaHook', 'DEFIFA_TOKEN'), read<Address>(market.hook, 'DefifaHook', 'BASE_PROTOCOL_TOKEN'),
+        ])
+        const amounts = [claim.defifaTokenAmount, claim.baseProtocolTokenAmount]
+        for (let i = 0; i < tokens.length; i++) {
+          if (amounts[i] === 0n) continue
+          const transfers = parseEventLogs({ abi: ERC20_ABI, logs: receipt.logs, eventName: 'Transfer', strict: true })
+          if (!transfers.some(log => sameAddress(log.address, tokens[i]) && sameAddress(log.args.from, market.hook)
+            && sameAddress(log.args.to, account) && log.args.value === amounts[i])) throw new Error('The receipt does not confirm the claimed protocol token transfer.')
+        }
+      }
+      break
+    }
+  }
+}

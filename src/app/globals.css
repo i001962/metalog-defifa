@@ -118,3 +118,5 @@ dialog .actions { justify-content: flex-end; }
 .distribution-bars::before { content: ''; width: 16px; height: 10px; background: #384fc433; border: 1px solid #384fc466; }
 .distribution-selection { min-height: 3em; font-size: 13px; font-variant-numeric: tabular-nums; }
 .distribution-overflow { display: flex; flex-wrap: wrap; gap: 4px 18px; margin-block: 6px 14px; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.inventory-table input[type="checkbox"] { width: 20px; height: 20px; margin: 0; vertical-align: middle; }
+.scorecard summary { overflow-wrap: anywhere; }

@@ -8,7 +8,9 @@ import { marketSIPmath } from '../src/lib/sipmath-market'
 import { GET } from '../src/app/api/markets/[chainId]/[projectId]/route'
 
 const mocks = vi.hoisted(() => ({ readMarket: vi.fn() }))
-vi.mock('../src/lib/defifa', () => ({ readMarket: mocks.readMarket }))
+vi.mock('../src/lib/defifa', async importOriginal => ({
+  ...await importOriginal<typeof import('../src/lib/defifa')>(), readMarket: mocks.readMarket,
+}))
 const build = vi.spyOn(sipmath, 'buildSIPmath')
 
 function snapshot(): MarketSnapshot {
@@ -142,6 +144,6 @@ describe('SIPmath observed market exports', () => {
     mocks.readMarket.mockRejectedValueOnce(new Error('Snapshot unavailable'))
     const unavailable = await GET(new Request(`${url}?format=sipmath`), context)
     expect(unavailable.status).toBe(503)
-    expect(await unavailable.json()).toEqual({ error: 'Snapshot unavailable' })
+    expect(await unavailable.json()).toEqual({ error: 'Market data could not be verified. Try again.' })
   })
 })

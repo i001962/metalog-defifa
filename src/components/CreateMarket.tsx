@@ -7,6 +7,7 @@ import { validateMarket } from '@/domain/market'
 import { createRanges, DEFAULT_RANGE_COUNT, DEFAULT_RANGE_WIDTH, MIN_RANGE_COUNT, MAX_RANGE_COUNT, MIN_RANGE_WIDTH, MAX_RANGE_WIDTH } from '@/domain/ranges'
 import { SUPPORTED_CHAINS } from '@/lib/wallet'
 import { downloadJson } from '@/lib/forecast'
+import { rememberMarket } from '@/lib/recent-markets'
 import { useWallet } from '@/providers/Providers'
 import { useTransactions } from '@/providers/Transactions'
 
@@ -16,7 +17,7 @@ const seconds = (value: string) => Math.floor(Date.parse(`${value}Z`) / 1000)
 export function CreateMarket({ now }: { now: number }) {
   const [prompt, setPrompt] = useState('')
   const [source, setSource] = useState('')
-  const [rule, setRule] = useState('Percentage change = 100 × (end value / start value − 1). Use the specified source at the observation start and end. Payouts follow the ratified Defifa scorecard.')
+  const [rule, setRule] = useState('Percentage change = 100 × (end value / start value − 1). Use the specified source at the observation start and end. Payouts follow the ratified scorecard.')
   const [open, setOpen] = useState(dateInput(now + 600))
   const [close, setClose] = useState(dateInput(now + 24 * 3600))
   const [end, setEnd] = useState(dateInput(now + 48 * 3600))
@@ -24,6 +25,7 @@ export function CreateMarket({ now }: { now: number }) {
   const [rangeWidth, setRangeWidth] = useState(String(DEFAULT_RANGE_WIDTH))
   const [price, setPrice] = useState('0.000001')
   const [chainId, setChainId] = useState(8453)
+  const isTestnet = SUPPORTED_CHAINS.some(chain => chain.id === chainId && 'testnet' in chain && chain.testnet)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [showValidation, setShowValidation] = useState(false)
@@ -39,6 +41,13 @@ export function CreateMarket({ now }: { now: number }) {
     } catch (cause) { return { definition: null, error: cause instanceof Error ? cause.message : 'Check the market details.' } }
   }, [prompt, source, rule, open, close, end, rangeCount, rangeWidth, price])
   const ranges = useMemo(() => { try { return createRanges(Number(rangeCount), Number(rangeWidth)) } catch { return [] } }, [rangeCount, rangeWidth])
+  function applyShortSchedule() {
+    if (!isTestnet) return
+    const starts = Math.ceil(Date.now() / 60_000) * 60 + 120
+    setOpen(dateInput(starts))
+    setClose(dateInput(starts + 600))
+    setEnd(dateInput(starts + 1200))
+  }
   async function create(event: React.FormEvent) {
     event.preventDefault()
     setShowValidation(true)
@@ -54,6 +63,7 @@ export function CreateMarket({ now }: { now: number }) {
       if (receipt) {
         const projectId = createdMarketId(receipt)
         if (!projectId) throw new Error('The transaction was confirmed, but its game ID could not be read. Check the transaction before creating again.')
+        rememberMarket(chainId, projectId)
         router.push(`/markets/${chainId}/${projectId}`)
       }
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Market could not be prepared.') }
@@ -78,7 +88,8 @@ export function CreateMarket({ now }: { now: number }) {
     <details><summary>View ranges</summary><div className="table-wrap"><table><thead><tr><th>NFT tier</th><th>Range</th></tr></thead><tbody>{ranges.map(range => <tr key={range.tierId}><td>{range.tierId}</td><td>{range.label}</td></tr>)}</tbody></table></div></details>
     <div className="section">
       <label className="field"><span>Network</span><select value={chainId} onChange={event => setChainId(Number(event.target.value))}>{SUPPORTED_CHAINS.map(chain => <option key={chain.id} value={chain.id}>{chain.name}</option>)}</select></label>
-      <p className="hint">Payouts follow the ratified Defifa scorecard. Entry can be refunded while minting is open.</p>
+      {isTestnet && <div className="field"><div><button type="button" onClick={applyShortSchedule}>Use short test schedule</button></div><small>Opens in 2–3 minutes, then 10 minutes each for entry and observation. Scorecards still take at least 1 day to settle.</small></div>}
+      <p className="hint">Payouts follow the ratified scorecard. Entry can be refunded while minting is open.</p>
       <div className="actions">
         <button type="submit" className="primary" disabled={busy || transactions.busy || Boolean(transactions.pending)}>{busy ? 'Preparing market…' : !wallet.address ? 'Connect to create' : wallet.isSigna ? 'Use external wallet to create' : 'Review market'}</button>
         <button type="button" disabled={!draft.definition} onClick={() => draft.definition && downloadJson(draft.definition, 'metalog-market.json')}>Download definition</button>

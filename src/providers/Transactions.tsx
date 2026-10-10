@@ -1,6 +1,7 @@
 'use client'
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type PropsWithChildren } from 'react'
+import Link from 'next/link'
 import { getAccount, getWalletClient, switchChain } from '@wagmi/core'
 import { useAccount } from 'wagmi'
 import { type Hex, type TransactionReceipt, type WalletClient } from 'viem'
@@ -54,6 +55,7 @@ export function Transactions({ children }: PropsWithChildren) {
   const locked = useRef(false)
   const preparedRef = useRef<PreparedTransaction | undefined>(undefined)
   const [lastSent, setLastSent] = useState<{ hash: Hex; chainId: number } | null>(null)
+  const [recoveredMarket, setRecoveredMarket] = useState<string | null>(null)
   const reviewIdentity = useRef<ReturnType<typeof identity> | null>(null)
   const { address, chainId, connector } = useAccount()
 
@@ -114,6 +116,7 @@ export function Transactions({ children }: PropsWithChildren) {
     return run(async () => {
       preparedRef.current = prepared
       setLastSent(null)
+      setRecoveredMarket(null)
       let wallet: WalletClient | undefined
       const runtime: TransactionRuntime = {
         storage: window.localStorage,
@@ -150,7 +153,12 @@ export function Transactions({ children }: PropsWithChildren) {
           value: BigInt(saved.value), title: saved.title, details: saved.details }
         verifier = { ...request, verifyReceipt: receipt => verifyDefifaTransactionReceipt(request, receipt) }
       }
-      return recoverTransaction({ storage: window.localStorage, client: publicClientForChain(saved.chainId), onStatus }, hash, verifier)
+      const receipt = await recoverTransaction({ storage: window.localStorage, client: publicClientForChain(saved.chainId), onStatus }, hash, verifier)
+      // A creation recovered after reload must return the user to its new game.
+      const { createdMarketId } = await import('@/lib/defifa')
+      try { setRecoveredMarket(`/markets/${saved.chainId}/${createdMarketId(receipt)}`) }
+      catch { setRecoveredMarket(null) } // Other verified actions do not launch a game.
+      return receipt
     })
   }
 
@@ -168,6 +176,7 @@ export function Transactions({ children }: PropsWithChildren) {
       {messages[status] && <p role="status">{messages[status]}</p>}
       {error && <p role="alert">{error}</p>}
       {shownHash && explorer && <p><a href={`${explorer}/tx/${shownHash}`} target="_blank" rel="noreferrer">View transaction</a></p>}
+      {recoveredMarket && <p><Link href={recoveredMarket}>Open created market</Link></p>}
       {pending && !busy && <>
         {!shownHash && <label>Original transaction hash<input value={recoveryHash} onChange={event => setRecoveryHash(event.target.value)} autoComplete="off" spellCheck={false} /></label>}
         <button type="button" onClick={() => void recover(shownHash ?? (recoveryHash as Hex))}>Check transaction</button>

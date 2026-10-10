@@ -1,4 +1,4 @@
-# Metalog foundation
+# Metalog design
 
 ## Accepted decisions
 
@@ -6,16 +6,18 @@ Each market is one native-token Defifa game. The creator records the question, s
 
 The first interface has four destinations: markets, create, a market with its curve editor, and data. The question and observation dates lead; rules expand in place. Simple selects mean/deviation; Expressive selects six labeled coefficient fields; By range selects exact NFT counts. Each editor retains its own draft. Exact positions fill two equal-width read-only tables in canonical range order, stacked on small screens, with no inner scrolling. Native inputs, one SVG combining density and allocation, and plain CSS with square corners suffice. The shared wallet dialog uses the same square theme. There is no marketing section, custom font, image pipeline, chart library or database.
 
+Creation offers an explicit short schedule on testnets: opening in 2–3 minutes, then 10 minutes each for entry and observation. Selecting a network does not overwrite dates. Browser-local navigation history stores at most 20 chain/project pairs; it does not store market claims, prompts or lifecycle state as trusted evidence. Confirmed creation and successfully loaded market views record their URLs; manually opening a project can also record its navigation reference before chain validation. Every reopened market is read and validated again.
+
 ## Outcome, evidence and execution
 
 1. A validated market definition produces exact tier labels and an encoded JSON data URI. The native launch stores this definition in project/collection metadata. The launch has equal-price native ETH tiers, no reserves and no organizer splits.
 2. Mean/standard deviation or raw coefficients produce a single curve. The domain owner computes each tier's CDF mass and deterministic integer quantities; users can then edit bucket quantities directly. Manual quantities determine the stake and histogram, while the curve remains a reference. The UI and API consume the same allocation owner.
-3. The Defifa adapter verifies deployment/game identity, protocol configuration, current phase, native price, remaining supply and creation fee. It prepares exact calldata/value and readable terms. A bounded entry memo records coefficients and count; manual entries also record exact quantities and their mode in a version-2 memo. Recovery retains support for version-1 curve entries. Defifa does not itself enforce curve validity.
+3. The Defifa adapters verify deployment/game identity, protocol configuration and current phase, plus the evidence needed by each action: price/supply/fee, NFT ownership, voting eligibility, exact scorecard or cash-out quote. They prepare exact calldata/value and readable terms. A bounded entry memo records coefficients and count; manual entries also record exact quantities and their mode in a version-2 memo. Recovery retains support for version-1 curve entries. Defifa does not itself enforce curve validity.
 4. The shared SDK owns review, account/chain checks, fresh revalidation, simulation and the one wallet send. The app persists uncertainty before opening the wallet. Explicit rejection may release an unsent record; timeout cannot.
-5. Success requires a canonical receipt for the exact reviewed transaction and matching Defifa effects. Launches prove the creator and definition; entries prove every expected NFT mint. Reload recovery reconstructs the same effect checker from saved bytes and never sends again.
+5. Success requires a canonical receipt for the exact reviewed transaction and matching Defifa effects. Launches prove the creator and definition; entries prove every expected NFT mint. Lifecycle verification binds transfers, delegation, proposals, attestations, ratification, no-contest and cash-out to the requested game/account and native events or resulting state. Reload recovery reconstructs the same effect checker from saved bytes and never sends again.
 6. Public views and JSON expose chain/block evidence. Missing reads, quotes and settlement are not represented as zero or success. Tests own the formulas, trust boundaries and recovery rules.
 
-The shared reference clients include additional transports and workflows. This foundation consumes their SDK and provider architecture for its supported direct-write lane; it does not claim Safe, Relayr or omnichain execution parity for flows it does not offer.
+The shared reference clients include additional transports and workflows. Metalog consumes their SDK and provider architecture for its supported direct-write lane; it does not claim Safe, Relayr or omnichain execution parity for flows it does not offer. The installed Signa connector offers read-only Base account access. Native-ETH Defifa launch, entry and lifecycle calls require an injected external wallet; Signa's specialized payment route cannot be substituted for arbitrary contract signing.
 
 ## Probability and range semantics
 
@@ -44,15 +46,23 @@ Manual counts are dense, non-negative safe integers in canonical range order, to
 | Product phase | Defifa evidence | User-facing meaning |
 | --- | --- | --- |
 | Countdown | Future mint opening | Inspect rules and prepare a curve |
-| Entry | MINT | Mint integer positions; Defifa refunds are possible |
-| Trading | SCORING, before observation end | No new entries; existing NFTs are transferable |
-| Settlement | SCORING, observation ended | Holders may attest and ratify a scorecard |
-| Complete | COMPLETE | Ratified weights known; commitments/cash-out readiness remain separate |
-| No contest | NO_CONTEST | Triggered state and refund readiness remain distinct |
+| Entry | MINT | Mint positions, refund selected NFTs or delegate tier votes |
+| Trading | SCORING, before observation end | No new entries or refunds; transfer NFTs or propose a scorecard |
+| Settlement | SCORING, observation ended | Eligible voters attest; ratify when the native governor permits it |
+| Complete | COMPLETE | Ratified weights known; claim by burning selected NFTs |
+| No contest | NO_CONTEST | Trigger native no-contest rules, then refund selected NFTs |
 
-`entryClosesAt` maps to native `start` with zero separate refund duration. `resolvesAt` is the attestation start, not a promise that scoring proposals cannot be submitted earlier. Native defaults include a one-day grace period, one-hour timelock and observation duration plus seven days before the scorecard timeout. Transfers are possible even during entry; the frontend cannot impose a post-start-only transfer rule.
+`entryClosesAt` maps to native `start` with zero separate refund duration. `resolvesAt` is the attestation start, not a promise that scoring proposals cannot be submitted earlier. The configured grace is one day, the protocol's minimum; the timelock is one hour. The configured scorecard timeout is seven days after the observation end. Public testnets obey these waits too; only local fork tests advance time. Transfers are possible even during entry; the frontend cannot impose a post-start-only transfer rule.
 
-The existing Defifa protocol and client own governance, transfers, refunds and cash-out. They have not been reimplemented in this first Metalog interface. No market has been launched as part of development.
+`src/lib/defifa-lifecycle.ts` owns lifecycle reads, action validation/calldata, cash-out quotes and receipt effects. Thin account controls consume its snapshot and use the same review/send/recovery boundary as launch and entry. Fresh revalidation after review detects expired phases, changed ownership and changed proposal eligibility before simulation or wallet submission.
+
+A proposal supplies exact ordered tier weights totaling `1e18` (100%). Nonzero weights require a tier with circulating supply. Proposals remain proposals until native ratification; the UI's optional single-range fill has no oracle authority. Voting power uses Defifa's concentration adjustment and delegation snapshot immediately before submission. Transferring an NFT later does not transfer its vote on an existing proposal. Entry metadata delegates to its recipient; explicit tier delegation is available during MINT only.
+
+The governor's `stateOf` is authoritative. Attestations open no earlier than the market's observation end and the proposal's own activation time. Revocation is limited to ACTIVE proposals. Ratification requires SUCCEEDED after the quorum, grace and timelock checks; insufficient quorum can leave a proposal active until the game times out. The adapter displays verified grace/timelock durations and proposal state rather than invent an exact countdown from unavailable internal quorum timing or equate the base quorum with a proposal's adjusted threshold.
+
+Native ratification calls commitment fulfillment atomically. The ordinary path is propose → attest → wait → ratify → claim, with a separate fulfillment control only for a verified unfulfilled COMPLETE state. Cash-out previews simulate the selected NFT burn and expose ETH plus native DEFIFA/NANA rewards. The reviewed minimum ETH amount is encoded in the transaction; rewards use the native cash-out hook rather than a separate invented token-claim call. Refund and payout beneficiaries are the connected owner. No-contest must be triggered before its refunds become available. Quotes and buttons are evidence of a currently possible action, not evidence that it has executed.
+
+Inventory uses bounded pages of native tier token candidates, verified with `ownerOf`, and reports the account's total balance, cursor and completeness. Burned NFTs do not replenish the candidate range. Scorecards use bounded native submission-log pages and preserve each emitted weight array for ratification. Further pages remain pinned to the original block. Partial history/inventory and RPC failure remain explicit; unscanned positions never become a zero balance. Each selected token is freshly verified before an action, independent of pagination. This is a prototype reader, not a global event indexer.
 
 ## Adversarial mechanic review
 
@@ -60,7 +70,7 @@ The existing Defifa protocol and client own governance, transfers, refunds and c
 | --- | --- |
 | Paid allocation is not a proper scoring rule | Rational bets can favor underpriced payouts rather than honest probabilities. Label stake-weighted positions; do not count wallets or curves as independent opinions. |
 | Wealth, repeat entry and last-minute copying | A large or late entrant can move the opening distribution. There is no Sybil resistance or commit/reveal claim. The block/time and stake weighting travel with data. |
-| Sparse-tier governance veto | Defifa discounts proposed winners’ attestation power; a holder in a sparsely occupied losing tier can prevent concentrated scorecards from reaching quorum. The UI exposes governance dependence; no artificial oracle guarantee. |
+| Sparse-tier governance veto | Defifa discounts proposed winners’ attestation power; a holder in a sparsely occupied losing tier can prevent concentrated scorecards from reaching quorum. The UI exposes governance dependence and each wallet’s actual proposal weight. If only one range has circulating NFTs, every valid scorecard assigns it 100%, giving all holders zero adjusted voting weight; timeout refunds are then the native exit. There is no artificial oracle guarantee. |
 | Empty tiers and disputed source | Empty tiers cannot receive nonzero scorecard weight. The recorded observation rule guides participants; only native governance/timeout paths determine settlement. No nearest-tier substitution. |
 | Arbitrary ratified weights | A measured result is not itself an enforceable one-winner payoff map. Display the actual ratified scorecard rather than infer one. |
 | Unequal supply and non-bet NFT value | Even under a hypothetical one-winner rule, price-implied mass would involve NFT supply and net payout, not price alone. Governance/refund options and protocol token rewards also affect prices. |
@@ -72,6 +82,8 @@ The existing Defifa protocol and client own governance, transfers, refunds and c
 ## Query data and next design boundary
 
 `POST /api/preview` is a bounded, stateless calculation. `GET /api/markets/:chainId/:projectId` returns one block-pinned snapshot. Draft probabilities, acquired integer positions, current supply shares, reconstructed opening shares and ratified payout weights are separate concepts. Empty or unavailable distributions are null; known empty supply is zero. JSON includes raw wei and counts as strings.
+
+`GET /api/markets/:chainId/:projectId/play` returns the typed lifecycle snapshot, including its market evidence. Optional `account` adds owned positions, delegates and attestation eligibility; `blockNumber`, `tokenCursor` and `scorecardCursor` continue bounded reads at one snapshot. Responses are not cached. This account/action API is separate from native probability and SIPmath exports, so wallet changes do not reseed exported random streams. Server-only `METALOG_RPC_URLS` overrides support operated endpoints and local forks without falling back to a different chain state; browser and wallet transports must be configured consistently when testing a fork.
 
 Adding a trading distribution requires choosing a venue, executable bid/ask source, freshness limit, depth threshold, manipulation treatment and an explicit payoff assumption compatible with the market’s scorecard rule. Adding automated resolution requires a protocol-enforced authority model. Neither capability follows merely from wiring a new chart or price endpoint.
 
@@ -101,4 +113,26 @@ Validation fixtures and source hashes live in `test/fixtures/sipmath`. The indep
 
 ## Verification boundary
 
-Unit/adversarial tests exercise math, metadata, real ABI decoding, modeled chain state, review/simulation, partial/incorrect effects and reload recovery. Browser checks cover rendered local journeys and responsive interaction; the public Railway example and stateless preview API are also smoke-tested. Runtime fingerprints came from deployment artifacts; preflight checks them against the requested chain before any write. Actual Signa ceremony, funded wallet execution and the full real-value game lifecycle remain unverified. No onchain transaction has been created as part of development.
+Unit/adversarial tests exercise math, metadata, real ABI decoding, modeled chain state, review/simulation, partial/incorrect effects and reload recovery. Existing browser checks cover rendered local journeys and responsive interaction; the public Railway example and stateless preview API have also been smoke-tested.
+
+On 2026-10-10, read-only verification matched the pinned Defifa deployer, governor, hook implementation and tier-store runtimes and their immutable links on all eight configured networks: Ethereum, Optimism, Base, Arbitrum and their Sepolia testnets. It also confirmed code at the five linked core protocol addresses. These checks qualify deployment identity; they do not prove a wallet transaction or continuing public RPC availability. Every write repeats the relevant deployment/game checks.
+
+Full lifecycle adapter qualification passed six tests on local Anvil forks of Base Sepolia and Base on 2026-10-10. These tests execute the deployed contract code with deterministic local accounts and advanced time: create, mint, uncertain-wallet-reply recovery without resending, entry refund, burned-token inventory, transfer, delegation, proposal, attest/revoke/re-attest, premature-action rejection, ratification with atomic fulfillment, cash-out with native rewards, and timeout/no-contest refund. The final six-test run completed in 111.49 seconds and additionally verifies actual before/after balances of both protocol reward tokens against each claim quote. All 118 unit tests pass, including 22 focused lifecycle tests; all 20 desktop/mobile browser regression checks pass. Lint, typecheck and the production build pass.
+
+Run `npm run test:integration` with Anvil available; [fork qualification instructions](../test/integration/README.md) describe upstream RPC/block selection and optional smoke-only runs. Local transaction hashes prove execution on the fork, not on the corresponding public network. The separate `npm run test:browser:lifecycle` production-browser journey passes with 15 real local-fork transactions, including network switching, creation, entry, refund, transfer to a second wallet, proposal, attest/revoke/re-attest, ratification, claim and a second game’s no-contest refund. The 390px mobile viewport has no document overflow, and the run reports no browser errors. The eight-network fork matrix also passes creation, entry and uncertain-send recovery (8 passed; 16 settlement/no-contest cases explicitly skipped in smoke mode). All eight production RPC endpoints accept browser-origin read requests and return the correct chain ID. Real Signa ceremony and public-chain wallet execution remain unverified; no public-chain transaction has been submitted during development.
+
+
+Fork anchors for the 2026-10-10 eight-network creation/entry run:
+
+| Network | Chain ID | Fork block |
+| --- | --- | --- |
+| Ethereum | 1 | 26,162,425 |
+| Optimism | 10 | 158,020,654 |
+| Arbitrum | 42161 | 513,530,238 |
+| Base | 8453 | 52,425,329 |
+| Sepolia | 11155111 | 11,884,940 |
+| Optimism Sepolia | 11155420 | 49,918,853 |
+| Arbitrum Sepolia | 421614 | 317,754,756 |
+| Base Sepolia | 84532 | 47,935,847 |
+
+The Ethereum and Sepolia forks used PublicNode upstreams; the other six used SDK defaults. The separate browser-origin check used the actual production transports, including Sepolia's default endpoint. Only Base and Base Sepolia have full settlement/refund fork qualification; the wider matrix does not imply that every lifecycle branch ran on every chain.

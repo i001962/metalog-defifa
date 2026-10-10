@@ -20,6 +20,8 @@ export { DEFIFA_ABI, deploymentForChain, SUPPORTED_CHAINS }
 export const NATIVE_TOKEN = '0x000000000000000000000000000000000000EEEe' as Address
 export const ATTESTATION_GRACE_SECONDS = 86_400
 export const ATTESTATION_TIMELOCK_SECONDS = 3_600
+// RPC error messages may contain private server endpoint credentials.
+export const PUBLIC_MARKET_ERROR = 'Market data could not be verified. Try again.'
 
 export type MarketSnapshot = {
   chainId: number
@@ -44,14 +46,14 @@ export type MarketSnapshot = {
 type RawTier = { id: number; price: bigint; reserveFrequency: number; remainingSupply: number }
 type RulesetResult = readonly [{ id: number }, { dataHook: Address }]
 
-function projectNumber(projectId: string): bigint {
+export function projectNumber(projectId: string): bigint {
   if (!/^[1-9]\d{0,77}$/.test(projectId) || BigInt(projectId) >= 1n << 256n) {
     throw new Error('Enter a valid Defifa project ID.')
   }
   return BigInt(projectId)
 }
 
-function signer(account: Address): Address {
+export function signer(account: Address): Address {
   const address = getAddress(account)
   if (address === zeroAddress) throw new Error('Connect a wallet before preparing this transaction.')
   return address
@@ -77,7 +79,7 @@ export async function readMarket(chainId: number, projectId: string): Promise<Ma
   return readMarketAt(client, chainId, projectId, block.number, Number(block.timestamp))
 }
 
-async function readMarketAt(
+export async function readMarketAt(
   client: PublicClient, chainId: number, projectId: string, blockNumber: bigint, timestamp: number,
 ): Promise<MarketSnapshot> {
   const d = deploymentForChain(chainId)
@@ -205,7 +207,7 @@ export async function listMarkets(chainId: number): Promise<{ markets: MarketSna
   const markets: MarketSnapshot[] = []
   results.forEach((result, index) => {
     if (result.status === 'fulfilled') markets.push(result.value)
-    else errors.push(`Market ${[...ids][index]} is unavailable: ${result.reason instanceof Error ? result.reason.message : 'read failed'}`)
+    else errors.push(`Game ${[...ids][index]}: ${PUBLIC_MARKET_ERROR}`)
   })
   return { markets, errors }
 }
@@ -278,7 +280,10 @@ export async function verifyDefifaTransactionReceipt(
   const d = await verifyDefifaDeployment(client, request.chainId, receipt.blockNumber)
   if (sameAddress(request.to, d.deployer)) {
     const decoded = decodeFunctionData({ abi: DEFIFA_ABI.DefifaDeployer, data: request.data })
-    if (decoded.functionName !== 'launchGameWith') throw new Error('This is not a supported market creation.')
+    if (decoded.functionName !== 'launchGameWith') {
+      const { verifyLifecycleReceipt } = await import('./defifa-lifecycle')
+      return verifyLifecycleReceipt(request, receipt)
+    }
     const launch = decoded.args?.[0] as { projectUri: string }
     const definition = decodeMarketDefinition(launch.projectUri)
     const expectedData = encodeFunctionData({
@@ -287,9 +292,16 @@ export async function verifyDefifaTransactionReceipt(
     if (expectedData !== request.data) throw new Error('The recorded creation differs from the supported market definition.')
     return verifyLaunchReceipt(client, request.chainId, owner, definition, receipt)
   }
-  if (!sameAddress(request.to, d.terminal)) throw new Error('The recorded transaction has an unsupported target.')
+  if (!sameAddress(request.to, d.terminal)) {
+    if (request.value !== 0n) throw new Error('The recorded transaction has an unsupported target.')
+    const { verifyLifecycleReceipt } = await import('./defifa-lifecycle')
+    return verifyLifecycleReceipt(request, receipt)
+  }
   const decoded = decodeFunctionData({ abi: DEFIFA_ABI.JBMultiTerminal, data: request.data })
-  if (decoded.functionName !== 'pay') throw new Error('This is not a supported curve entry.')
+  if (decoded.functionName !== 'pay') {
+    const { verifyLifecycleReceipt } = await import('./defifa-lifecycle')
+    return verifyLifecycleReceipt(request, receipt)
+  }
   const [projectId, token, amount, beneficiary, minimum, memoText, metadata] = decoded.args as
     readonly [bigint, Address, bigint, Address, bigint, string, Hex]
   if (!sameAddress(token, NATIVE_TOKEN) || !sameAddress(beneficiary, owner) || amount !== request.value || minimum !== 0n) {

@@ -1,4 +1,4 @@
-import { readMarket } from '@/lib/defifa'
+import { readMarket, PUBLIC_MARKET_ERROR } from '@/lib/defifa'
 import { marketData } from '@/lib/market-data'
 import { marketSIPmath } from '@/lib/sipmath-market'
 import { requestedExportFormat } from '@/lib/sipmath'
@@ -12,7 +12,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ chai
     const headers = new Headers({ 'Cache-Control': 'no-store' })
     if (selection.format === 'sipmath') headers.set('Content-Disposition', 'attachment; filename="metalog-market.SIPmath"')
     return Response.json(selection.format === 'sipmath' ? marketSIPmath(snapshot) : marketData(snapshot), { headers })
-  } catch (cause) {
-    return Response.json({ error: cause instanceof Error ? cause.message : 'Market unavailable.' }, { status: 503 })
+  } catch {
+    return Response.json({ error: PUBLIC_MARKET_ERROR }, { status: 503, headers: { 'Cache-Control': 'no-store' } })
   }
 }
