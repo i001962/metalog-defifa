@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { formatPercentage, RANGE_DECIMAL_PLACES, MAX_RANGE_BOUNDARY, type RangeBin } from '@/domain/ranges'
 
 type Props = {
@@ -10,6 +10,14 @@ type Props = {
 }
 
 export function RangePreview({ ranges, stale, selected, boundary, onSelect, onBoundaryFocus, onBoundaryChange }: Props) {
+  const plot = useRef<HTMLDivElement>(null)
+  const [plotWidth, setPlotWidth] = useState(0)
+  useEffect(() => {
+    if (!plot.current) return
+    const observer = new ResizeObserver(entries => setPlotWidth(entries[0].contentRect.width))
+    observer.observe(plot.current)
+    return () => observer.disconnect()
+  }, [ranges.length])
   const [drag, setDrag] = useState<{ index: number; minimum: number; maximum: number; left: number; width: number } | null>(null)
   if (ranges.length < 3) return null
   const first = ranges[0], last = ranges[ranges.length - 1]
@@ -32,14 +40,14 @@ export function RangePreview({ ranges, stale, selected, boundary, onSelect, onBo
     <div className="range-preview-heading"><span>{ranges.length} ranges · numbered by NFT tier</span>{stale && <span>Last valid ranges</span>}</div>
     <div className="range-preview-map">
       <button type="button" className="range-overflow" aria-label={name(first)} aria-pressed={selected === first.tierId} onFocus={() => onSelect(first.tierId)} onMouseEnter={() => onSelect(first.tierId)} onClick={() => onSelect(first.tierId)}>1 ←<span>{first.label}</span></button>
-      <div className="range-preview-finite">
+      <div className="range-preview-finite" ref={plot}>
         <svg viewBox="0 0 1000 44" preserveAspectRatio="none" aria-label="Finite ranges to scale">
           {ranges.slice(1, -1).map(range => <rect key={range.tierId} role="button" tabIndex={0} aria-label={name(range)} aria-pressed={selected === range.tierId}
             x={x(range.lower!) * 10} y={0} width={(range.upper! - range.lower!) / span * 1000} height={44}
             onFocus={() => onSelect(range.tierId)} onMouseEnter={() => !drag && onSelect(range.tierId)} onClick={event => { onSelect(range.tierId); event.currentTarget.focus() }}
             onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelect(range.tierId) } }} />)}
         </svg>
-        <div className="range-preview-numbers" aria-hidden="true">{ranges.slice(1, -1).map(range => (range.upper! - range.lower!) / span > .035 && <span key={range.tierId} style={{ left: `${x((range.lower! + range.upper!) / 2)}%` }}>{range.tierId}</span>)}</div>
+        <div className="range-preview-numbers" aria-hidden="true">{ranges.slice(1, -1).map(range => ((range.upper! - range.lower!) / span * plotWidth > 22 || selected === range.tierId) && <span key={range.tierId} style={{ left: `${x((range.lower! + range.upper!) / 2)}%` }}>{range.tierId}</span>)}</div>
         {cutoffs.map((value, index) => <button key={index} type="button" className="range-handle" role="slider" aria-label={`Boundary ${index + 1}`} aria-valuenow={value} aria-valuetext={formatPercentage(value, RANGE_DECIMAL_PLACES)}
           aria-valuemin={index ? cutoffs[index - 1] + 10 ** -RANGE_DECIMAL_PLACES : -MAX_RANGE_BOUNDARY} aria-valuemax={index < cutoffs.length - 1 ? cutoffs[index + 1] - 10 ** -RANGE_DECIMAL_PLACES : MAX_RANGE_BOUNDARY}
           aria-disabled={!editable} data-active={boundary === index || selected === index + 1 || selected === index + 2} style={{ left: `${x(value)}%` }}
@@ -64,7 +72,7 @@ export function RangePreview({ ranges, stale, selected, boundary, onSelect, onBo
       </div>
       <button type="button" className="range-overflow" aria-label={name(last)} aria-pressed={selected === last.tierId} onFocus={() => onSelect(last.tierId)} onMouseEnter={() => onSelect(last.tierId)} onClick={() => onSelect(last.tierId)}>{last.tierId} →<span>{last.label}</span></button>
     </div>
-    <figcaption>{boundary !== null && cutoffs[boundary] !== undefined ? `Boundary ${boundary + 1}: ${formatPercentage(cutoffs[boundary], RANGE_DECIMAL_PLACES)} · Between ranges ${boundary + 1} and ${boundary + 2}` : active ? `${name(active)}${active.lower === null || active.upper === null ? ' · Overflow' : ''}` : 'Select a numbered range to highlight its boundaries.'}</figcaption>
+    <figcaption>{boundary !== null && cutoffs[boundary] !== undefined ? `Boundary ${boundary + 1}: ${formatPercentage(cutoffs[boundary], RANGE_DECIMAL_PLACES)} · Between ranges ${boundary + 1} and ${boundary + 2}` : active ? `${name(active)}${active.lower === null || active.upper === null ? ' · Overflow' : ''}` : 'Select a range to highlight its boundaries.'}</figcaption>
     <p className="hint">{onBoundaryChange ? 'Drag a boundary to resize its neighboring ranges. Arrow keys adjust by 0.01%; Shift adjusts by 1%.' : 'Choose Advanced to drag individual boundaries. Your Simple settings are preserved.'}</p>
   </figure>
 }

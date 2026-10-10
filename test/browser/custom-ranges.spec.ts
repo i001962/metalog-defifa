@@ -233,3 +233,15 @@ test('range axis links fields and supports pointer and keyboard boundary editing
   await expect(diagram.getByText('Last valid ranges', { exact: true })).toBeVisible()
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
 })
+
+
+test('dense range labels remain legible on narrow screens', async ({ page, isMobile }) => {
+  await page.goto('/create')
+  const diagram = page.getByRole('figure', { name: 'Range visualization' })
+  const numbers = diagram.locator('.range-preview-numbers span')
+  if (isMobile) await expect(numbers).toHaveCount(0)
+  else await expect(numbers).toHaveCount(19)
+  await diagram.getByRole('button', { name: 'Range 11: -0.5% to < +0.5%', exact: true }).focus()
+  await expect(diagram.locator('figcaption')).toHaveText('Range 11: -0.5% to < +0.5%')
+  await expect(numbers.filter({ hasText: /^11$/ })).toBeVisible()
+})
