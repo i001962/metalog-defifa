@@ -47,7 +47,7 @@ export function validateRangeBoundaries(boundaries: readonly number[]): number[]
   return Array.from(boundaries, (value, index) => {
     value = validateRangeBoundary(value, index)
     const scaled = Math.round(value * RANGE_SCALE)
-    if (scaled <= previous) throw new Error('Cutoffs must be in strictly increasing order.')
+    if (scaled <= previous) throw new Error(boundaryOrderIssue(index - 1, index))
     previous = scaled
     return value === 0 ? 0 : value
   })
@@ -65,14 +65,14 @@ function validateRangeBoundary(value: number, index: number): number {
   if (typeof value !== 'number' || !Number.isFinite(value) || Math.abs(value) > MAX_RANGE_BOUNDARY
     || !Number.isSafeInteger(scaled) || scaled / RANGE_SCALE !== value
     || value !== Number(value.toFixed(RANGE_DECIMAL_PLACES))) {
-    throw new Error(`Cutoff ${index + 1} must be a finite percentage within ±${MAX_RANGE_BOUNDARY} with at most ${RANGE_DECIMAL_PLACES} decimal places.`)
+    throw new Error(`Boundary ${index + 1} must be a finite percentage within ±${MAX_RANGE_BOUNDARY} with at most ${RANGE_DECIMAL_PLACES} decimal places.`)
   }
   return value === 0 ? 0 : value
 }
 
 function parseRangeBoundaryText(field: string, index: number): number {
   if (typeof field !== 'string' || !COMPLETE_CUTOFF.test(field.trim())) {
-    throw new Error(`Enter a complete percentage for cutoff ${index + 1}, with at most ${RANGE_DECIMAL_PLACES} decimal places.`)
+    throw new Error(`Enter a complete percentage for Boundary ${index + 1}, with at most ${RANGE_DECIMAL_PLACES} decimal places.`)
   }
   return Number(field.trim())
 }
@@ -80,6 +80,59 @@ function parseRangeBoundaryText(field: string, index: number): number {
 /** Parses one editor field with the same precision rules as a complete layout. */
 export function parseRangeBoundary(field: string, index = 0): number {
   return validateRangeBoundary(parseRangeBoundaryText(field, index), index)
+}
+
+function boundaryOrderIssue(lowerIndex: number, upperIndex: number): string {
+  return `Boundary ${lowerIndex + 1} must be less than Boundary ${upperIndex + 1}; boundaries must stay in strictly increasing order.`
+}
+
+/** Errors stay beside every involved field, while invalid text remains intact. */
+export function rangeBoundaryIssues(fields: readonly string[]): Record<number, string> {
+  const issues: Record<number, string> = {}
+  const values = Array.from(fields, (field, index) => {
+    try { return parseRangeBoundary(field, index) }
+    catch (error) {
+      issues[index] = error instanceof Error ? error.message : 'Enter a valid percentage.'
+      return null
+    }
+  })
+  for (let index = 1; index < values.length; index++) {
+    const lower = values[index - 1], upper = values[index]
+    if (lower !== null && upper !== null && lower >= upper) {
+      const message = boundaryOrderIssue(index - 1, index)
+      issues[index - 1] = message
+      issues[index] = message
+    }
+  }
+  return issues
+}
+
+/** Deliberate values anchor equal spacing; all other cutoffs refill the remaining span. */
+export function redistributeRangeBoundaries(current: readonly number[], index: number, value: number, fixedIndices: readonly number[]): number[] {
+  const boundaries = validateRangeBoundaries(current)
+  if (!Number.isInteger(index) || index < 0 || index >= boundaries.length
+    || fixedIndices.some(fixed => !Number.isInteger(fixed) || fixed < 0 || fixed >= boundaries.length)) {
+    throw new Error('Choose an existing boundary.')
+  }
+  boundaries[index] = validateRangeBoundary(value, index)
+  const anchors = [...new Set([0, boundaries.length - 1, index, ...fixedIndices])].sort((a, b) => a - b)
+  for (let anchor = 1; anchor < anchors.length; anchor++) {
+    const lowerIndex = anchors[anchor - 1], upperIndex = anchors[anchor]
+    const lower = Math.round(boundaries[lowerIndex] * RANGE_SCALE)
+    const upper = Math.round(boundaries[upperIndex] * RANGE_SCALE)
+    if (upper <= lower) throw new Error(boundaryOrderIssue(lowerIndex, upperIndex))
+    const steps = upperIndex - lowerIndex
+    if (upper - lower < steps) {
+      throw new Error(`Boundary ${lowerIndex + 1} and Boundary ${upperIndex + 1} need at least ${(steps / RANGE_SCALE).toFixed(RANGE_DECIMAL_PLACES)} percentage points between them to fit the remaining ranges.`)
+    }
+    // Integer interpolation keeps all spans exact, including near the safe numeric limit.
+    const span = BigInt(upper - lower), divisor = BigInt(steps)
+    for (let offset = 1; offset < steps; offset++) {
+      const distance = Number((span * BigInt(offset) + divisor / 2n) / divisor)
+      boundaries[lowerIndex + offset] = (lower + distance) / RANGE_SCALE
+    }
+  }
+  return validateRangeBoundaries(boundaries)
 }
 
 export function createCustomRanges(boundaries: readonly number[]): RangeBin[] {

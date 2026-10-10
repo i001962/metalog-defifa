@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { parseEther } from 'viem'
 import { parseDefaultDelegate, validateMarket } from '@/domain/market'
-import { createRanges, createCustomRanges, parseRangeBoundaries, DEFAULT_RANGE_COUNT, DEFAULT_RANGE_WIDTH, MIN_RANGE_COUNT, MAX_RANGE_COUNT, MIN_RANGE_WIDTH, MAX_RANGE_WIDTH, type RangeBin } from '@/domain/ranges'
+import { createRanges, createCustomRanges, parseRangeBoundaries, parseRangeBoundary, redistributeRangeBoundaries, rangeBoundaryIssues, DEFAULT_RANGE_COUNT, DEFAULT_RANGE_WIDTH, MIN_RANGE_COUNT, MAX_RANGE_COUNT, MIN_RANGE_WIDTH, MAX_RANGE_WIDTH, type RangeBin } from '@/domain/ranges'
 import { SUPPORTED_CHAINS } from '@/lib/wallet'
 import { downloadJson } from '@/lib/forecast'
 import { rememberMarket } from '@/lib/recent-markets'
@@ -29,6 +29,8 @@ export function CreateMarket({ now }: { now: number }) {
   const [rangeMode, setRangeMode] = useState<RangeMode>('simple')
   const [selectedRange, setSelectedRange] = useState<number | null>(null)
   const [selectedBoundary, setSelectedBoundary] = useState<number | null>(null)
+  const [fixedBoundaries, setFixedBoundaries] = useState<number[]>([])
+  const [editFailure, setEditFailure] = useState<{ index: number; message: string } | null>(null)
   const [boundaries, setBoundaries] = useState<string[] | null>(null)
   const [lastRanges, setLastRanges] = useState<Partial<Record<RangeMode, RangeBin[]>>>(() => ({ simple: createRanges() }))
   const [price, setPrice] = useState('0.000001')
@@ -49,8 +51,10 @@ export function CreateMarket({ now }: { now: number }) {
       return { configuration: { rangeCount: Number(rangeCount), rangeWidth: Number(rangeWidth) }, ranges: createRanges(Number(rangeCount), Number(rangeWidth)), error: null }
     } catch (cause) { return { configuration: null, ranges: null, error: cause instanceof Error ? cause.message : 'Check the range boundaries.' } }
   }, [rangeMode, boundaries, rangeCount, rangeWidth])
-  if (rangeDraft.ranges && rangeDraft.ranges !== lastRanges[rangeMode]) setLastRanges({ ...lastRanges, [rangeMode]: rangeDraft.ranges })
-  const ranges = rangeDraft.ranges ?? lastRanges[rangeMode] ?? []
+  if (rangeDraft.ranges && (rangeMode === 'simple' || !editFailure) && rangeDraft.ranges !== lastRanges[rangeMode]) setLastRanges({ ...lastRanges, [rangeMode]: rangeDraft.ranges })
+  const ranges = (rangeMode === 'advanced' && editFailure ? null : rangeDraft.ranges) ?? lastRanges[rangeMode] ?? []
+  const boundaryIssues = rangeMode === 'advanced' ? { ...rangeBoundaryIssues(boundaries ?? []), ...(editFailure ? { [editFailure.index]: editFailure.message } : {}) } : {}
+  const rangeError = rangeMode === 'advanced' && editFailure ? editFailure.message : rangeDraft.error
   const delegateDraft = useMemo(() => {
     try { return { address: parseDefaultDelegate(delegate), error: null } }
     catch (cause) { return { address: undefined, error: cause instanceof Error ? cause.message : 'Enter a valid delegate address.' } }
@@ -58,13 +62,13 @@ export function CreateMarket({ now }: { now: number }) {
   const draft = useMemo(() => {
     try {
       if (!/^(?:\d+(?:\.\d{0,18})?|\.\d{1,18})$/.test(price)) throw new Error('Enter an ETH price with up to 18 decimal places.')
-      if (!rangeDraft.configuration) throw new Error(rangeDraft.error || 'Check the ranges.')
+      if (rangeError || !rangeDraft.configuration) throw new Error(rangeError || 'Check the ranges.')
       if (delegateDraft.error) throw new Error(delegateDraft.error)
       const definition = validateMarket({ schemaVersion: 1, settlement: 'defifa-scorecard', prompt, source, resolutionRule: rule,
         entryOpensAt: seconds(open), entryClosesAt: seconds(close), resolvesAt: seconds(end), ...rangeDraft.configuration, defaultAttestationDelegate: delegateDraft.address, unitPriceWei: parseEther(price).toString() })
       return { definition, error: null }
     } catch (cause) { return { definition: null, error: cause instanceof Error ? cause.message : 'Check the market details.' } }
-  }, [prompt, source, rule, open, close, end, rangeDraft, delegateDraft, price])
+  }, [prompt, source, rule, open, close, end, rangeDraft, rangeError, delegateDraft, price])
   function selectRangeMode(next: RangeMode) {
     if (next === 'advanced' && boundaries === null) {
       const seed = rangeDraft.ranges ?? lastRanges.simple!
@@ -74,6 +78,45 @@ export function CreateMarket({ now }: { now: number }) {
     setSelectedRange(null)
     setSelectedBoundary(null)
     setRangeMode(next)
+  }
+  function editBoundary(index: number, text: string, anchors = fixedBoundaries) {
+    const next = boundaries!.map((item, position) => position === index ? text : item)
+    setBoundaries(next)
+    try {
+      const values = next.map((item, position) => parseRangeBoundary(item, position))
+      if (editFailure && editFailure.index !== index) { parseRangeBoundaries(next) }
+      const cached = lastRanges.advanced?.slice(0, -1).map(range => range.upper!)
+      const base = cached?.length === next.length ? cached : parseRangeBoundaries(next)
+      const fixed = [...new Set([...anchors, index])]
+      const result = redistributeRangeBoundaries(base, index, values[index], fixed)
+      setBoundaries(result.map((value, position) => position === index ? text : String(value)))
+      setFixedBoundaries(fixed)
+      setEditFailure(null)
+    } catch (cause) {
+      setEditFailure({ index, message: cause instanceof Error ? cause.message : 'Check this boundary.' })
+    }
+  }
+  function setBoundaryFixed(index: number, fixed: boolean) {
+    const nextFixed = fixed ? [...fixedBoundaries, index] : fixedBoundaries.filter(item => item !== index)
+    setFixedBoundaries(nextFixed)
+    if (!fixed && editFailure && editFailure.index !== index) {
+      editBoundary(editFailure.index, boundaries![editFailure.index], nextFixed)
+    } else if (!fixed && !rangeError) {
+      const values = parseRangeBoundaries(boundaries!)
+      setBoundaries(redistributeRangeBoundaries(values, 0, values[0], nextFixed).map(String))
+    }
+  }
+  function removeBoundary(index: number) {
+    const next = boundaries!.filter((_, position) => position !== index)
+    const fixed = fixedBoundaries.filter(item => item !== index).map(item => item > index ? item - 1 : item)
+    setFixedBoundaries(fixed)
+    setEditFailure(null)
+    setSelectedBoundary(null)
+    setSelectedRange(null)
+    try {
+      const values = parseRangeBoundaries(next)
+      setBoundaries(redistributeRangeBoundaries(values, 0, values[0], fixed).map(String))
+    } catch { setBoundaries(next) }
   }
   function applyShortSchedule() {
     if (!isTestnet) return
@@ -125,33 +168,35 @@ export function CreateMarket({ now }: { now: number }) {
       </>}
       <label className="field"><span>Price per position (ETH)</span><input inputMode="decimal" required value={price} onChange={event => setPrice(event.target.value)} /></label>
     </div>
-    <RangePreview ranges={ranges} stale={Boolean(rangeDraft.error)} selected={selectedRange} boundary={selectedBoundary}
+    <div aria-live="polite">{rangeError && <p className="range-alert error" role="alert">{rangeError} Chart shows the last valid ranges.</p>}</div>
+    <RangePreview ranges={ranges} stale={Boolean(rangeError)} invalidBoundaries={Object.keys(boundaryIssues).map(key => { const index = Number(key); const raw = boundaries?.[index]?.trim(); const value = raw ? Number(raw) : NaN; return { index, value: Number.isFinite(value) ? value : null } })} selected={selectedRange} boundary={selectedBoundary}
       onSelect={tier => { setSelectedRange(tier); setSelectedBoundary(null) }}
       onBoundaryFocus={index => { setSelectedBoundary(index); setSelectedRange(null) }}
-      onBoundaryChange={rangeMode === 'advanced' ? (index, value) => setBoundaries(previous => previous!.map((item, position) => position === index ? value : item)) : undefined} />
+      onBoundaryChange={rangeMode === 'advanced' ? (index, value) => editBoundary(index, value) : undefined} />
     <div>{rangeMode === 'advanced' ? <>
-      <p className="hint">Set ascending percentage boundaries. The outer ranges include all overflow.</p>
-      <div className="range-boundaries">{boundaries?.map((value, index) => <div className="field boundary-field" key={index} data-highlighted={selectedBoundary === index || selectedRange === index + 1 || selectedRange === index + 2}>
+      <p className="hint">Edited boundaries stay fixed. Other boundaries spread evenly through the remaining space.</p>
+      <div className="range-boundaries">{boundaries?.map((value, index) => <div className="field boundary-field" key={index} data-invalid={Boolean(boundaryIssues[index])} data-highlighted={selectedBoundary === index || selectedRange === index + 1 || selectedRange === index + 2}>
         <label htmlFor={`range-boundary-${index}`}><span>Boundary {index + 1} (%)</span></label>
         <div className="inline">
-          <input id={`range-boundary-${index}`} onFocus={() => { setSelectedBoundary(index); setSelectedRange(null) }} inputMode="decimal" maxLength={24} required value={value} aria-invalid={Boolean(rangeDraft.error)} onChange={event => setBoundaries(previous => previous!.map((boundary, position) => position === index ? event.target.value : boundary))} />
-          <button className="remove-boundary" type="button" aria-label={`Remove boundary ${index + 1}`} disabled={boundaries.length <= MIN_RANGE_COUNT - 1} onClick={() => setBoundaries(previous => previous!.filter((_, position) => position !== index))}>×</button>
+          <input id={`range-boundary-${index}`} onFocus={() => { setSelectedBoundary(index); setSelectedRange(null) }} inputMode="decimal" maxLength={24} required value={value} aria-invalid={Boolean(boundaryIssues[index])} aria-describedby={`range-boundary-help-${index} range-boundary-error-${index}`} onChange={event => editBoundary(index, event.target.value)} />
+          <button className="remove-boundary" type="button" aria-label={`Remove boundary ${index + 1}`} disabled={boundaries.length <= MIN_RANGE_COUNT - 1} onClick={() => removeBoundary(index)}>×</button>
         </div>
-        <small>Between ranges {index + 1} and {index + 2}</small>
+        <small id={`range-boundary-help-${index}`}>Between ranges {index + 1} and {index + 2}</small>
+        <label className="boundary-fixed"><input type="checkbox" aria-label={`Fix boundary ${index + 1}`} checked={index === 0 || index === boundaries.length - 1 || fixedBoundaries.includes(index)} disabled={index === 0 || index === boundaries.length - 1} onChange={event => setBoundaryFixed(index, event.target.checked)} />{index === 0 || index === boundaries.length - 1 ? 'Extent' : 'Fixed'}</label>
+        <small id={`range-boundary-error-${index}`} className="error">{boundaryIssues[index]}</small>
       </div>)}</div>
-      <button type="button" disabled={(boundaries?.length ?? 0) >= MAX_RANGE_COUNT - 1} onClick={() => setBoundaries(previous => [...previous!, ''])}>Add boundary</button>
+      <button type="button" disabled={(boundaries?.length ?? 0) >= MAX_RANGE_COUNT - 1} onClick={() => { setFixedBoundaries(previous => [...new Set([...previous, boundaries!.length - 1])]); setBoundaries(previous => [...previous!, '']) }}>Add boundary</button>
     </> : <p className="hint">Equal-width ranges centered on 0%, plus one overflow range at each end.</p>}</div>
-    {rangeDraft.error && <p className="error" role="alert" style={{ marginTop: 14 }}>{rangeDraft.error}</p>}
-    <details><summary>View ranges</summary>{rangeDraft.error && <p className="hint">Showing the last valid ranges.</p>}<div className="table-wrap"><table><thead><tr><th>NFT tier</th><th>Range</th></tr></thead><tbody>{ranges.map(range => <tr key={range.tierId}><td>{range.tierId}</td><td>{range.label}</td></tr>)}</tbody></table></div></details>
+    <details><summary>View ranges</summary>{rangeError && <p className="hint">Showing the last valid ranges.</p>}<div className="table-wrap"><table><thead><tr><th>NFT tier</th><th>Range</th></tr></thead><tbody>{ranges.map(range => <tr key={range.tierId}><td>{range.tierId}</td><td>{range.label}</td></tr>)}</tbody></table></div></details>
     <div className="section">
       <label className="field"><span>Network</span><select className="network-select" value={chainId} onChange={event => setChainId(Number(event.target.value))}>{SUPPORTED_CHAINS.map(chain => <option key={chain.id} value={chain.id}>{chain.name}</option>)}</select></label>
       {isTestnet && <div className="field"><div><button type="button" onClick={applyShortSchedule}>Use short test schedule</button></div><small>Opens in 2–3 minutes, then 10 minutes each for entry and observation. Scorecards still take at least 1 day to settle.</small></div>}
       <p className="hint">Payouts follow the ratified scorecard. Entry can be refunded while minting is open.</p>
       <div className="actions">
-        <button type="submit" className="primary" disabled={busy || transactions.busy || Boolean(transactions.pending) || Boolean(rangeDraft.error || delegateDraft.error)}>{busy ? 'Preparing market…' : !wallet.address ? 'Connect to create' : wallet.isSigna ? 'Use external wallet to create' : 'Review market'}</button>
+        <button type="submit" className="primary" disabled={busy || transactions.busy || Boolean(transactions.pending) || Boolean(rangeError || delegateDraft.error)}>{busy ? 'Preparing market…' : !wallet.address ? 'Connect to create' : wallet.isSigna ? 'Use external wallet to create' : 'Review market'}</button>
         <button type="button" disabled={!draft.definition} onClick={() => draft.definition && downloadJson(draft.definition, 'metalog-market.json')}>Download definition</button>
       </div>
-      {(error || (showValidation && draft.error && draft.error !== rangeDraft.error && draft.error !== delegateDraft.error)) && <p className="error" role="alert" style={{ marginTop: 14 }}>{error || draft.error}</p>}
+      {(error || (showValidation && draft.error && draft.error !== rangeError && draft.error !== delegateDraft.error)) && <p className="error" role="alert" style={{ marginTop: 14 }}>{error || draft.error}</p>}
     </div>
   </form>
 }

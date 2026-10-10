@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { allocateManualPositions, allocatePositions, MAX_POSITIONS, positionDensities } from '../src/domain/allocation'
 import { cdf, coefficientsFromMoments, densityBuckets, parseCoefficientFields, parseCoefficients, pdf, quantile, validateCoefficients } from '../src/domain/distribution'
 import { decodeMarketDefinition, encodeMarketDefinition, marketRanges, MAX_ENTRY_DURATION_SECONDS, MAX_RESOLUTION_DURATION_SECONDS, MAX_TIMESTAMP_SECONDS, MAX_UNIT_PRICE_WEI, parseDefaultDelegate, validateMarket, type MarketDefinition } from '../src/domain/market'
-import { binForOutcome, createCustomRanges, createRanges, formatPercentage, MAX_RANGE_BOUNDARY, MAX_RANGE_COUNT, MAX_RANGE_WIDTH, MIN_RANGE_WIDTH, parseRangeBoundaries, validateRangeWidth } from '../src/domain/ranges'
+import { binForOutcome, createCustomRanges, createRanges, formatPercentage, MAX_RANGE_BOUNDARY, MAX_RANGE_COUNT, MAX_RANGE_WIDTH, MIN_RANGE_WIDTH, parseRangeBoundary, parseRangeBoundaries, rangeBoundaryIssues, redistributeRangeBoundaries, validateRangeWidth } from '../src/domain/ranges'
 
 const definition: MarketDefinition = {
   schemaVersion: 1,
@@ -461,5 +461,50 @@ describe('Explicit range cutoffs', () => {
     }
     expect(() => parseRangeBoundaries(['0', '0.0000'])).toThrow('increasing')
     expect(() => parseRangeBoundaries(['0'])).toThrow('cutoffs')
+  })
+})
+
+
+describe('Range editor redistribution', () => {
+  it('preserves deliberate boundaries and endpoints while filling untouched spans', () => {
+    const original = [-9.5, -8.5, -7.5, -6.5, -5.5, -4.5]
+    const edited = redistributeRangeBoundaries(original, 1, -6.5, [])
+    expect(edited).toEqual([-9.5, -6.5, -6, -5.5, -5, -4.5])
+    expect(original).toEqual([-9.5, -8.5, -7.5, -6.5, -5.5, -4.5])
+    expect(redistributeRangeBoundaries(edited, 3, -5.9, [1])).toEqual([-9.5, -6.5, -6.2, -5.9, -5.2, -4.5])
+    expect(redistributeRangeBoundaries(edited, 0, -10.5, [1])).toEqual([-10.5, -6.5, -6, -5.5, -5, -4.5])
+    expect(redistributeRangeBoundaries(edited, 5, -3.5, [1])).toEqual([-9.5, -6.5, -5.75, -5, -4.25, -3.5])
+  })
+
+  it('rejects crossing deliberate anchors and insufficient precision without altering the layout', () => {
+    const current = [-3, -2, -1, 0, 1, 2, 3]
+    expect(() => redistributeRangeBoundaries(current, 1, 0, [3])).toThrow('Boundary 2 must be less than Boundary 4')
+    expect(() => redistributeRangeBoundaries(current, 5, -3, [3])).toThrow('Boundary 4 must be less than Boundary 6')
+    expect(() => redistributeRangeBoundaries(current, 1, 2.9999, [])).toThrow('need at least 0.0005')
+    for (const index of [-1, 7, 1.5]) expect(() => redistributeRangeBoundaries(current, index, 0, [])).toThrow('existing boundary')
+    expect(() => redistributeRangeBoundaries(current, 1, -2, [7])).toThrow('existing boundary')
+    expect(() => redistributeRangeBoundaries(current, 1, -2.00001, [])).toThrow('decimal places')
+    expect(current).toEqual([-3, -2, -1, 0, 1, 2, 3])
+  })
+
+  it('uses representable four-decimal cutoffs even for indivisible and maximal spans', () => {
+    expect(redistributeRangeBoundaries([0, 1, 2, 3], 3, 0.001, [])).toEqual([0, 0.0003, 0.0007, 0.001])
+    const result = redistributeRangeBoundaries([-MAX_RANGE_BOUNDARY, -1, 1, MAX_RANGE_BOUNDARY], 1, -MAX_RANGE_BOUNDARY + 1, [])
+    expect(createCustomRanges(result)).toHaveLength(5)
+    expect(result[0]).toBe(-MAX_RANGE_BOUNDARY)
+    expect(result[1]).toBe(-MAX_RANGE_BOUNDARY + 1)
+    expect(result[3]).toBe(MAX_RANGE_BOUNDARY)
+  })
+
+  it('locates incomplete text and both sides of duplicate or reversed pairs', () => {
+    expect(parseRangeBoundary(' -.0003 ', 4)).toBe(-0.0003)
+    expect(rangeBoundaryIssues(['-3', '-2', '-1', '0'])).toEqual({})
+    const issues = rangeBoundaryIssues(['-3', '-1', '-2', '', '2'])
+    expect(Object.keys(issues)).toEqual(['1', '2', '3'])
+    expect(issues[1]).toContain('Boundary 2 must be less than Boundary 3')
+    expect(issues[2]).toBe(issues[1])
+    expect(issues[3]).toContain('complete percentage for Boundary 4')
+    expect(Object.keys(rangeBoundaryIssues(['0', '-0']))).toEqual(['0', '1'])
+    expect(rangeBoundaryIssues(['0', String(MAX_RANGE_BOUNDARY + 1)])[1]).toContain('finite percentage')
   })
 })
