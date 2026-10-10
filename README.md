@@ -19,7 +19,7 @@ After the checks below pass, publish this directory with `railway up --project c
 
 ## What works
 
-- Market definition with exact observation dates/rule, equal-width NFT ranges centered on zero and two overflow ranges. Creators choose the range width.
+- Market definition with exact observation dates/rule and two overflow ranges. Simple creates equal-width NFT ranges centered on zero; Advanced lets creators set each boundary. Both layouts retain their drafts when switching.
 - Simple mean/deviation, Expressive coefficients and By range NFT counts retain independent drafts. One chart overlays the curve and allocation bars on the same percentage axis, with exact bucket details, overflow totals and two read-only positions columns without inner scrolling.
 - Native Defifa creation, entry, NFT transfers, voting delegation, scorecard proposals/attestations/ratification, refunds and payout claims. Every write uses external-wallet review, simulation, receipt-effect verification and reload recovery.
 - Signa connection using the shared SDK, enabled after origin/callback registration.
@@ -83,7 +83,7 @@ npm run test:integration       # real Anvil forks of Base Sepolia and Base
 npm run test:browser:lifecycle # production build + Chromium + Anvil required
 ```
 
-Browser tests cover the example, sequential decimal typing, raw inputs, dragging/keyboard controls, create definitions, wallet chooser, recent links, the test schedule, responsive layout and query endpoints. Modeled adapter tests decode real ABIs and exercise incorrect effects, stale evidence and recovery.
+Browser tests cover the example, sequential decimal typing, raw inputs, dragging/keyboard controls, both range layouts and their independent drafts, exact custom intervals in JSON/SIPmath, wallet chooser, recent links, the test schedule, responsive layout and query endpoints. Modeled adapter tests decode real ABIs and exercise incorrect effects, stale evidence and recovery.
 
 Creation, entry and recovery tests pass on local forks of all eight networks. Full lifecycle adapter tests passed on local Base Sepolia and Base forks, including refunds, transfers, delegation, scorecards, claims, no-contest and recovery without resending. [Fork setup and options](test/integration/README.md). The production browser journey also passes against a Base Sepolia fork: 15 local transactions cover creation, entry, refund, NFT transfer, scorecard governance, claim and no-contest refund, including wallet network switching and mobile layout checks. No public-chain transaction or real Signa passkey ceremony has been performed during development. See the [verification boundary](docs/DESIGN.md#verification-boundary) for the distinction between deployment checks and executed lifecycle evidence.
 

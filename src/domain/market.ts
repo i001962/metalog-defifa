@@ -1,4 +1,8 @@
-import { validateRangeCount, validateRangeWidth } from './ranges'
+import { createCustomRanges, createRanges, validateRangeBoundaries, validateRangeCount, validateRangeWidth, type RangeBin } from './ranges'
+
+type RangeConfiguration =
+  | { rangeCount: number; rangeWidth: number; rangeBoundaries?: never }
+  | { rangeBoundaries: number[]; rangeCount?: never; rangeWidth?: never }
 
 export type MarketDefinition = {
   schemaVersion: 1
@@ -11,10 +15,8 @@ export type MarketDefinition = {
   entryClosesAt: number
   /** Observation ends and Defifa attestations can begin at this second. */
   resolvesAt: number
-  rangeCount: number
-  rangeWidth: number
   unitPriceWei: string
-}
+} & RangeConfiguration
 
 // This is below Defifa's uint48 limit and keeps every accepted timestamp representable by JS Date.
 export const MAX_TIMESTAMP_SECONDS = 8_640_000_000_000
@@ -42,6 +44,26 @@ function timestamp(input: Record<string, unknown>, key: string): number {
   return value
 }
 
+function rangeConfiguration(input: Record<string, unknown>): RangeConfiguration {
+  if (input.rangeBoundaries !== undefined) {
+    if (input.rangeCount !== undefined || input.rangeWidth !== undefined) {
+      throw new Error('Use either custom cutoffs or a range count and width, not both.')
+    }
+    return { rangeBoundaries: validateRangeBoundaries(input.rangeBoundaries as number[]) }
+  }
+  if (typeof input.rangeCount !== 'number') throw new Error('Range count must be a number.')
+  if (typeof input.rangeWidth !== 'number') throw new Error('Range width must be a number.')
+  return { rangeCount: validateRangeCount(input.rangeCount), rangeWidth: validateRangeWidth(input.rangeWidth) }
+}
+
+/** Canonical tier geometry for launch, chain verification, previews and exports. */
+export function marketRanges(definition: MarketDefinition): RangeBin[] {
+  const configuration = rangeConfiguration(definition)
+  return configuration.rangeBoundaries === undefined
+    ? createRanges(configuration.rangeCount, configuration.rangeWidth)
+    : createCustomRanges(configuration.rangeBoundaries)
+}
+
 /** Omitting now validates historical metadata without treating an old market as malformed. */
 export function validateMarket(input: unknown, now?: number): MarketDefinition {
   if (typeof input !== 'object' || input === null || Array.isArray(input)) throw new Error('Market definition must be an object.')
@@ -67,8 +89,6 @@ export function validateMarket(input: unknown, now?: number): MarketDefinition {
     || BigInt(unitPriceWei) > MAX_UNIT_PRICE_WEI) {
     throw new Error('Position price must be a positive uint104 amount in wei.')
   }
-  if (typeof object.rangeCount !== 'number') throw new Error('Range count must be a number.')
-  if (typeof object.rangeWidth !== 'number') throw new Error('Range width must be a number.')
   return {
     schemaVersion: 1,
     settlement: 'defifa-scorecard',
@@ -78,8 +98,7 @@ export function validateMarket(input: unknown, now?: number): MarketDefinition {
     entryOpensAt,
     entryClosesAt,
     resolvesAt,
-    rangeCount: validateRangeCount(object.rangeCount),
-    rangeWidth: validateRangeWidth(object.rangeWidth),
+    ...rangeConfiguration(object),
     unitPriceWei,
   }
 }

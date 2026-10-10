@@ -11,7 +11,7 @@ export default function RulesPage() {
     <p>Select your NFTs to transfer them, refund during entry, or claim after settlement. Refunds and claims burn the selected NFTs. The transaction preview shows the minimum ETH returned and any protocol token rewards.</p>
     <p>Settlement depends on participation. Defifa discounts a tier’s voting power as its proposed payout increases; a sparse losing range can block a concentrated scorecard. An empty tier cannot receive scorecard weight. A timeout may permit Defifa’s no-contest process.</p>
     <p>The displayed distribution is stake-weighted. An allocation is a bet, and incentives can differ from an honest forecast. More money, more entries and transfers do not imply more independent forecasters.</p>
-    <p>Ranges have equal widths centered on 0%, with an overflow range at each end. The creator fixes their width. The curve and bars share one percentage axis; each bar’s area represents its share of NFT positions. Overflow totals appear separately.</p>
+    <p>Creators choose Simple ranges with equal widths centered on 0%, or Advanced ranges with custom boundaries. Both include an overflow range at each end. The curve and bars share one percentage axis; each bar uses its actual range width, and its area represents its share of NFT positions. Overflow totals appear separately.</p>
     <p><Link href="/data">Query probability data</Link></p>
   </article>
 }

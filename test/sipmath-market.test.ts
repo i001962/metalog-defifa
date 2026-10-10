@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { marketRanges, validateMarket } from '../src/domain/market'
 import { createRanges } from '../src/domain/ranges'
 import type { MarketSnapshot } from '../src/lib/defifa'
 import { EXAMPLE_MARKET } from '../src/lib/example'
@@ -14,7 +15,7 @@ vi.mock('../src/lib/defifa', async importOriginal => ({
 const build = vi.spyOn(sipmath, 'buildSIPmath')
 
 function snapshot(): MarketSnapshot {
-  const definition = { ...EXAMPLE_MARKET, rangeCount: 3, rangeWidth: 2 }
+  const definition = validateMarket({ ...EXAMPLE_MARKET, rangeCount: 3, rangeWidth: 2 })
   const ranges = createRanges(definition.rangeCount, definition.rangeWidth)
   return {
     chainId: 8453, projectId: '7', hook: '0x0000000000000000000000000000000000000123',
@@ -59,6 +60,56 @@ describe('SIPmath observed market exports', () => {
     const repeated = marketSIPmath(source)
     expect({ ...repeated, dateCreated: result.dateCreated }).toEqual(result)
     expect(() => JSON.stringify(result)).not.toThrow()
+  })
+
+  it('binds observed custom tier categories to exact metadata cutoffs and rejects tampered evidence', async () => {
+    const source = snapshot()
+    const { rangeCount, rangeWidth, ...definition } = source.definition
+    source.definition = { ...definition, rangeBoundaries: [-5, -1, 0, .5, 3] }
+    source.ranges = marketRanges(source.definition)
+    source.tiers = source.ranges.map(range => ({
+      tierId: range.tierId, supply: ['0', '1', '2', '0', '3', '4'][range.tierId - 1],
+      entrySupply: ['1', '2', '3', '1', '4', '5'][range.tierId - 1],
+      priceWei: source.definition.unitPriceWei, remainingSupply: '999999990',
+    }))
+    source.ratifiedWeights = source.ranges.map(range => ({ tierId: range.tierId, weight: range.tierId === 2 ? source.cashOutWeightTotal : '0' }))
+    const result = marketSIPmath(source)
+    expect(result.metadata.source).toMatchObject({ definition: source.definition })
+    expect(result.metadata.audit).toEqual({ native: marketData(source), availability: { circulating: 'available', opening: 'available' } })
+    expect(source.ranges.map(range => [range.lower, range.upper])).toEqual([
+      [null, -5], [-5, -1], [-1, 0], [0, .5], [.5, 3], [3, null],
+    ])
+    expect(build.mock.calls.at(-1)![0].variables).toMatchObject([
+      { name: 'circulating_tier', tierIds: [1, 2, 3, 4, 5, 6], counts: [0n, 1n, 2n, 0n, 3n, 4n] },
+      { name: 'opening_tier', tierIds: [1, 2, 3, 4, 5, 6], counts: [1n, 2n, 3n, 1n, 4n, 5n] },
+    ])
+    expect(result.sips[0].arguments).toEqual({ value: [[.1, 2], [.3, 3], [.6, 5], [1, 6]] })
+    for (const sip of result.sips) expect(sip.metadata).toMatchObject({ ranges: source.ranges, unit: 'tier-id' })
+
+    mocks.readMarket.mockResolvedValue(source)
+    const context = { params: Promise.resolve({ chainId: '8453', projectId: '7' }) }
+    const url = 'http://localhost/api/markets/8453/7'
+    const native = await GET(new Request(url), context)
+    expect(native.status).toBe(200)
+    expect(await native.json()).toEqual(marketData(source))
+    const response = await GET(new Request(`${url}?format=sipmath`), context)
+    expect(response.status).toBe(200)
+    const exported = await response.json()
+    expect(exported).toEqual({ ...result, dateCreated: exported.dateCreated })
+
+    const builds = build.mock.calls.length
+    for (const mutate of [
+      (copy: MarketSnapshot) => { copy.definition = { ...definition, rangeBoundaries: [-5, -1, 0, .75, 3] } },
+      (copy: MarketSnapshot) => { copy.ranges[3].upper = .75 },
+      (copy: MarketSnapshot) => { copy.ranges[3].label = '0% to < +1%' },
+      (copy: MarketSnapshot) => { copy.tiers[5].tierId = 5 },
+      (copy: MarketSnapshot) => { Object.assign(copy.definition, { rangeCount, rangeWidth }) },
+    ]) {
+      const copy = structuredClone(source)
+      mutate(copy)
+      expect(() => marketSIPmath(copy)).toThrow()
+    }
+    expect(build).toHaveBeenCalledTimes(builds)
   })
 
   it('keeps only explicit snapshot identity in seed context even when input carries extra derived fields', () => {

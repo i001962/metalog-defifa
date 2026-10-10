@@ -6,10 +6,10 @@ import { createHookMetadata, hookMetadataId } from '@bananapus/nana-sdk-core'
 import { allocateManualPositions, allocatePositions, type Allocation } from '../domain/allocation'
 import { validateCoefficients, type Coefficients } from '../domain/distribution'
 import {
-  decodeMarketDefinition, encodeMarketDefinition, SCORECARD_TIMEOUT_BUFFER_SECONDS, validateMarket,
+  decodeMarketDefinition, encodeMarketDefinition, marketRanges, SCORECARD_TIMEOUT_BUFFER_SECONDS, validateMarket,
   type MarketDefinition,
 } from '../domain/market'
-import { createRanges, type RangeBin } from '../domain/ranges'
+import { formatPercentage, RANGE_DECIMAL_PLACES, type RangeBin } from '../domain/ranges'
 import {
   assertChain, assertGameClone, contractRead, DEFIFA_ABI, deploymentForChain, sameAddress, verifyDefifaDeployment,
 } from './defifa-deployment'
@@ -104,7 +104,7 @@ export async function readMarketAt(
     throw new Error('This project is not a supported native-token Defifa market.')
   }
   const definition = decodeMarketDefinition(uri)
-  const ranges = createRanges(definition.rangeCount, definition.rangeWidth)
+  const ranges = marketRanges(definition)
   if (Number(times[0]) !== definition.entryClosesAt || Number(times[2]) !== 0
     || Number(times[1]) !== definition.entryClosesAt - definition.entryOpensAt) {
     throw new Error('The market metadata does not match the onchain entry times.')
@@ -217,7 +217,7 @@ function launchData(definition: MarketDefinition, chainId: number) {
   const uri = encodeMarketDefinition(definition)
   return {
     name: definition.prompt, projectUri: uri, contractUri: uri, baseUri: '',
-    tiers: createRanges(definition.rangeCount, definition.rangeWidth).map(range => ({
+    tiers: marketRanges(definition).map(range => ({
       name: range.label, reservedRate: 0, reservedTokenBeneficiary: zeroAddress, encodedIpfsUri: zeroHash,
       shouldUseReservedTokenBeneficiaryAsDefault: false,
     })),
@@ -355,6 +355,7 @@ export async function prepareCreateMarket(
     return contractRead<bigint>(client, d.projects, 'JBProjects', 'creationFee', [], block.number)
   }
   const fee = await freshFee()
+  const ranges = marketRanges(definition)
   const data = encodeFunctionData({ abi: DEFIFA_ABI.DefifaDeployer, functionName: 'launchGameWith', args: [launchData(definition, chainId)] })
   return {
     chainId, account: owner, to: d.deployer, data, value: fee, title: 'Create market',
@@ -362,8 +363,10 @@ export async function prepareCreateMarket(
       { label: 'Question', value: definition.prompt },
       { label: 'Source', value: definition.source },
       { label: 'Resolution rule', value: definition.resolutionRule },
-      { label: 'Ranges', value: String(definition.rangeCount) },
-      { label: 'Range width', value: `${definition.rangeWidth} percentage points` },
+      { label: 'Ranges', value: String(ranges.length) },
+      definition.rangeBoundaries === undefined
+        ? { label: 'Range width', value: `${definition.rangeWidth} percentage points` }
+        : { label: 'Range cutoffs', value: ranges.slice(0, -1).map(range => formatPercentage(range.upper!, RANGE_DECIMAL_PLACES)).join(', ') },
       { label: 'Price per position', value: `${formatEther(BigInt(definition.unitPriceWei))} ETH` },
       { label: 'Entry opens', value: new Date(definition.entryOpensAt * 1000).toISOString() },
       { label: 'Entry closes', value: new Date(definition.entryClosesAt * 1000).toISOString() },
@@ -386,7 +389,7 @@ export async function prepareEntry(
   if (!allocation || (allocation.mode !== 'curve' && allocation.mode !== 'manual')) {
     throw new Error('The position allocation mode is not supported.')
   }
-  const ranges = createRanges(definition.rangeCount, definition.rangeWidth)
+  const ranges = marketRanges(definition)
   const expected = allocation.mode === 'manual'
     ? allocateManualPositions(a, ranges, allocation.quantities)
     : allocatePositions(a, ranges, allocation.count)

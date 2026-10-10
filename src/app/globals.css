@@ -10,6 +10,7 @@ button:disabled { cursor: default; color: #777; background: #f6f6f6; }
 button.primary, .button.primary { background: var(--ink); color: white; border-color: var(--ink); }
 button.primary:disabled { background: #777; border-color: #777; }
 input, select, textarea { width: 100%; padding: 10px 12px; border: 1px solid #bcbcbc; background: white; min-width: 0; }
+.network-select { width: max-content; max-width: 100%; justify-self: start; appearance: none; padding-right: 36px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='m2 4 4 4 4-4' fill='none' stroke='%23202020' stroke-width='1.5'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; background-size: 12px; }
 input:disabled { background: #f7f7f7; }
 textarea { resize: vertical; min-height: 90px; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
@@ -41,7 +42,7 @@ section[aria-labelledby="your-view"] { margin-top: 32px; }
 .mode-toggle { display: inline-flex; }
 .mode-toggle button + button { margin-left: -1px; }
 .mode-toggle button[aria-pressed="true"] { background: #f0f0f0; font-weight: 550; }
-.forecast-moments input, .stake-input { width: 8rem; }
+.forecast-moments input, .stake-input, .project-id-input, .range-boundaries input { width: 8rem; }
 .coefficient-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 20px; max-width: 42rem; }
 .quantity-input { width: 4rem; padding: 3px 7px; text-align: right; }
 .positions { margin-top: 18px; }
@@ -58,6 +59,10 @@ section[aria-labelledby="your-view"] { margin-top: 32px; }
 .positions-table th { position: sticky; top: 0; z-index: 1; background: var(--paper); }
 .positions-table th, .positions-table td { padding-block: 5px; }
 .range-editor { max-width: 32rem; margin-bottom: 20px; }
+.range-boundaries { display: grid; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); gap: 12px 20px; margin-bottom: 14px; }
+.range-boundaries .field { margin-bottom: 0; }
+.range-boundaries .inline { gap: 8px; }
+.remove-boundary { padding-inline: 10px; }
 .form-narrow { max-width: 740px; }
 .actions { display: flex; align-items: center; flex-wrap: wrap; gap: 14px; margin-top: 20px; }
 .error { color: #a72828; font-size: 14px; overflow-wrap: anywhere; }

@@ -1,15 +1,14 @@
 import { formatEther, parseEther } from 'viem'
 import { allocateManualPositions, allocatePositions, MAX_POSITIONS } from '@/domain/allocation'
 import { validateCoefficients } from '@/domain/distribution'
-import { validateMarket } from '@/domain/market'
-import { createRanges } from '@/domain/ranges'
+import { marketRanges, validateMarket } from '@/domain/market'
 
 /** Both the form and public preview endpoint consume this exact allocation. */
 export function forecastPreview(input: { market: unknown; coefficients: readonly number[]; positions?: number; quantities?: readonly number[] }) {
   if (!input || typeof input !== 'object') throw new Error('A forecast definition is required.')
   const market = validateMarket(input.market)
   const coefficients = validateCoefficients(input.coefficients)
-  const ranges = createRanges(market.rangeCount, market.rangeWidth)
+  const ranges = marketRanges(market)
   const allocation = input.quantities === undefined
     ? allocatePositions(coefficients, ranges, input.positions!)
     : allocateManualPositions(coefficients, ranges, input.quantities)

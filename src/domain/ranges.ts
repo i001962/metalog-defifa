@@ -13,6 +13,10 @@ export const DEFAULT_RANGE_WIDTH = 1
 export const MIN_RANGE_WIDTH = 0.01
 export const MAX_RANGE_WIDTH = 100
 export const RANGE_DECIMAL_PLACES = 4
+const RANGE_SCALE = 10 ** RANGE_DECIMAL_PLACES
+const COMPLETE_CUTOFF = new RegExp(`^[+-]?(?:\\d+(?:\\.\\d{1,${RANGE_DECIMAL_PLACES}})?|\\.\\d{1,${RANGE_DECIMAL_PLACES}})$`)
+// Both cutoffs and their full span fit safely in integer ten-thousandths.
+export const MAX_RANGE_BOUNDARY = Math.floor(Number.MAX_SAFE_INTEGER / 2) / RANGE_SCALE
 
 export function validateRangeCount(count: number): number {
   if (!Number.isInteger(count) || count < MIN_RANGE_COUNT || count > MAX_RANGE_COUNT || count % 2 !== 1) {
@@ -33,6 +37,40 @@ export function formatPercentage(value: number, digits = 2): string {
   if (!Number.isFinite(value)) throw new Error('Percentage must be finite.')
   const rounded = Number(value.toFixed(digits))
   return `${rounded > 0 ? '+' : ''}${rounded}%`
+}
+
+export function validateRangeBoundaries(boundaries: readonly number[]): number[] {
+  if (!Array.isArray(boundaries) || boundaries.length < MIN_RANGE_COUNT - 1 || boundaries.length > MAX_RANGE_COUNT - 1) {
+    throw new Error(`Enter ${MIN_RANGE_COUNT - 1} to ${MAX_RANGE_COUNT - 1} cutoffs.`)
+  }
+  let previous = -Infinity
+  return Array.from(boundaries, (value, index) => {
+    const scaled = Math.round(value * RANGE_SCALE)
+    if (typeof value !== 'number' || !Number.isFinite(value) || Math.abs(value) > MAX_RANGE_BOUNDARY
+      || !Number.isSafeInteger(scaled) || scaled / RANGE_SCALE !== value
+      || value !== Number(value.toFixed(RANGE_DECIMAL_PLACES))) {
+      throw new Error(`Cutoff ${index + 1} must be a finite percentage within ±${MAX_RANGE_BOUNDARY} with at most ${RANGE_DECIMAL_PLACES} decimal places.`)
+    }
+    if (scaled <= previous) throw new Error('Cutoffs must be in strictly increasing order.')
+    previous = scaled
+    return value === 0 ? 0 : value
+  })
+}
+
+/** Incomplete editor text is invalid, never a silently substituted zero. */
+export function parseRangeBoundaries(fields: readonly string[]): number[] {
+  if (!Array.isArray(fields)) throw new Error('Enter a value for every cutoff.')
+  const values = Array.from(fields, (field, index) => {
+    if (typeof field !== 'string' || !COMPLETE_CUTOFF.test(field.trim())) {
+      throw new Error(`Enter a complete percentage for cutoff ${index + 1}, with at most ${RANGE_DECIMAL_PLACES} decimal places.`)
+    }
+    return Number(field.trim())
+  })
+  return validateRangeBoundaries(values)
+}
+
+export function createCustomRanges(boundaries: readonly number[]): RangeBin[] {
+  return rangesFromBoundaries(validateRangeBoundaries(boundaries))
 }
 
 export function createRanges(count = DEFAULT_RANGE_COUNT, width = DEFAULT_RANGE_WIDTH): RangeBin[] {

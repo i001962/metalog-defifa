@@ -6,7 +6,7 @@ import {
 import { hookMetadataId } from '@bananapus/nana-sdk-core'
 import { allocateManualPositions, allocatePositions, type Allocation } from '../src/domain/allocation'
 import { coefficientsFromMoments } from '../src/domain/distribution'
-import { decodeMarketDefinition, encodeMarketDefinition, type MarketDefinition } from '../src/domain/market'
+import { decodeMarketDefinition, encodeMarketDefinition, marketRanges, validateMarket, type MarketDefinition } from '../src/domain/market'
 import { createRanges } from '../src/domain/ranges'
 import {
   createdMarketId, DEFIFA_ABI, deploymentForChain, listMarkets, NATIVE_TOKEN, prepareCreateMarket, prepareEntry, readMarket,
@@ -41,6 +41,7 @@ const definition: MarketDefinition = {
   entryOpensAt: 1_800_000_100, entryClosesAt: 1_800_003_700, resolvesAt: 1_800_090_100,
   rangeCount: 3, rangeWidth: 1, unitPriceWei: '10000000000000',
 }
+const customDefinition = validateMarket({ ...definition, rangeCount: undefined, rangeWidth: undefined, rangeBoundaries: [-5, -1, 0, 0.5, 3] })
 const ranges = createRanges(definition.rangeCount, definition.rangeWidth)
 let observedRanges = ranges
 let now = definition.entryOpensAt - 10
@@ -214,6 +215,41 @@ describe('Defifa launch calldata and fresh state', () => {
     expect(launch.name).toBe(unicode.prompt)
     expect(decodeMarketDefinition(launch.projectUri).source).toBe(unicode.source)
     await expect(prepareCreateMarket({ ...definition, prompt: 'a'.repeat(281) }, chainId, account)).rejects.toThrow('prompt')
+  })
+
+  it('binds uneven cutoffs to reviewed launch tiers, exact entry allocations and receipt recovery', async () => {
+    const preview = forecastPreview({ market: customDefinition, coefficients: [0, 1], positions: 100 })
+    const launch = await prepareCreateMarket(customDefinition, chainId, account)
+    const decoded = decodeFunctionData({ abi: DEFIFA_ABI.DefifaDeployer, data: launch.data })
+    const data = decoded.args![0] as { projectUri: string; tiers: { name: string }[] }
+    expect(decodeMarketDefinition(data.projectUri)).toEqual(customDefinition)
+    expect(data.tiers.map(tier => tier.name)).toEqual([
+      '< -5%', '-5% to < -1%', '-1% to < 0%', '0% to < +0.5%', '+0.5% to < +3%', '≥ +3%',
+    ])
+    expect(launch.details).toContainEqual({ label: 'Ranges', value: '6' })
+    expect(launch.details).toContainEqual({ label: 'Range cutoffs', value: '-5%, -1%, 0%, +0.5%, +3%' })
+    expect(launch.details?.some(detail => detail.label === 'Range width')).toBe(false)
+    uri = data.projectUri
+    observedRanges = marketRanges(customDefinition)
+    now = customDefinition.entryOpensAt + 1
+    const market = await readMarket(chainId, '7')
+    expect(market.ranges).toEqual(preview.ranges)
+    const entry = await prepareEntry(market, preview.allocation, account, preview.distribution.coefficients)
+    expect(preview.allocation.quantities).toEqual([1, 26, 23, 12, 33, 5])
+    const expectedIds = preview.allocation.tierIds.flatMap((id, index) => Array<number>(preview.allocation.quantities[index]).fill(id))
+    const payment = decodeFunctionData({ abi: DEFIFA_ABI.JBMultiTerminal, data: entry.data })
+    const [, ids] = decodeAbiParameters([{ type: 'address' }, { type: 'uint16[]' }], `0x${(payment.args![6] as Hex).slice(130)}`)
+    expect(ids).toEqual(expectedIds)
+    expect(entry.value).toBe(BigInt(customDefinition.unitPriceWei) * 100n)
+    await expect(verifyDefifaTransactionReceipt(entry, mintReceipt(expectedIds))).resolves.toBeUndefined()
+
+    const changed = { ...customDefinition, rangeBoundaries: [-5, -1, 0, 0.5, 5] } as MarketDefinition
+    uri = encodeMarketDefinition(changed)
+    await expect(readMarket(chainId, '7')).rejects.toThrow('onchain ranges')
+    await expect(entry.reverify!()).rejects.toThrow('onchain ranges')
+    observedRanges = marketRanges(changed)
+    await expect(entry.reverify!()).rejects.toThrow('market changed')
+    await expect(verifyDefifaTransactionReceipt(entry, mintReceipt(expectedIds))).rejects.toThrow('mint metadata')
   })
 })
 
@@ -418,7 +454,9 @@ it('extracts only confirmed canonical launch events for navigation', () => {
   expect(() => createdMarketId({ ...receipt, logs: [{ ...receipt.logs[0], address: account as Address }] })).toThrow('confirmed Defifa market')
 })
 
-it('recovers creation from immutable calldata and rejects a changed creator or stored definition', async () => {
+it.each([{ name: 'uniform', definition }, { name: 'custom', definition: customDefinition }])('recovers $name creation from immutable calldata and rejects a changed creator or stored definition', async ({ definition }) => {
+  uri = encodeMarketDefinition(definition)
+  observedRanges = marketRanges(definition)
   const tx = await prepareCreateMarket(definition, chainId, account)
   const receipt = { status: 'success', blockNumber: 100n, logs: [{
     address: deployment.deployer,

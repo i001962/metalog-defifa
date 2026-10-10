@@ -3,8 +3,7 @@
 import { useMemo, useState } from 'react'
 import { formatEther } from 'viem'
 import { coefficientsFromMoments, parseCoefficientFields, type Coefficients } from '@/domain/distribution'
-import type { MarketDefinition } from '@/domain/market'
-import { createRanges } from '@/domain/ranges'
+import { marketRanges, type MarketDefinition } from '@/domain/market'
 import type { MarketSnapshot } from '@/lib/defifa'
 import { downloadJson, forecastPreview, positionsForBudget } from '@/lib/forecast'
 import { forecastSIPmath } from '@/lib/sipmath'
@@ -47,7 +46,7 @@ export function ForecastEditor({ definition, market, onSubmitted }: {
   const [lastValidCurves, setLastValidCurves] = useState<Partial<Record<EditorMode, Coefficients>>>({})
   if (curve.coefficients && curve.coefficients !== lastValidCurves[mode]) setLastValidCurves({ ...lastValidCurves, [mode]: curve.coefficients })
   const displayedCurve = curve.coefficients ?? lastValidCurves[mode]!
-  const ranges = useMemo(() => createRanges(definition.rangeCount, definition.rangeWidth), [definition.rangeCount, definition.rangeWidth])
+  const ranges = useMemo(() => marketRanges(definition), [definition])
   const automatic = useMemo(() => {
     try {
       if (!curve.coefficients) throw new Error(curve.error || 'Check your curve.')

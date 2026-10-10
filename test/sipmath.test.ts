@@ -35,6 +35,40 @@ describe('SIPmath forecast export boundary', () => {
     expect(library.sips.some(sip => 'aCoefficients' in sip.arguments)).toBe(false)
   })
 
+  it('preserves custom cutoffs and exact categorical counts in draft exports and replay identity', async () => {
+    const { rangeCount, rangeWidth, ...definition } = EXAMPLE_MARKET
+    const market = { ...definition, rangeBoundaries: [-5, -1, 0, .5, 3] }
+    const curve = { market, coefficients: [0, 1], positions: 100 }
+    const manual = { market, coefficients: [0, 1], quantities: [2, 0, 3, 0, 0, 5] }
+    for (const payload of [curve, manual]) {
+      const library = forecastSIPmath(payload)
+      const preview = forecastPreview(payload)
+      expect(library.metadata.audit).toEqual(preview)
+      expect(library.metadata.source).toEqual({ kind: 'draft', market, mode: preview.allocation.mode })
+      const allocation = library.sips.find(sip => sip.name === 'allocation')!
+      expect(allocation.metadata).toMatchObject({ ranges: [
+        { tierId: 1, lower: null, upper: -5 }, { tierId: 2, lower: -5, upper: -1 },
+        { tierId: 3, lower: -1, upper: 0 }, { tierId: 4, lower: 0, upper: .5 },
+        { tierId: 5, lower: .5, upper: 3 }, { tierId: 6, lower: 3, upper: null },
+      ] })
+      expect(library.sips.map(sip => sip.name)).toEqual(preview.allocation.mode === 'manual' ? ['allocation'] : ['forecast', 'allocation'])
+      if (preview.allocation.mode === 'manual') {
+        expect(allocation.arguments).toEqual({ value: [[.2, 1], [.5, 3], [1, 6]] })
+      }
+      const response = await POST(new Request('http://localhost/api/preview?format=sipmath', { method: 'POST', body: JSON.stringify(payload) }))
+      expect(response.status).toBe(200)
+      expect(repeatable(await response.json())).toEqual(repeatable(library))
+    }
+    const original = forecastSIPmath(manual)
+    const changed = forecastSIPmath({ ...manual, market: { ...market, rangeBoundaries: [-5, -1, 0, .75, 3] } })
+    expect(changed.metadata.sourceSha256).not.toBe(original.metadata.sourceSha256)
+    expect(changed.U01).not.toEqual(original.U01)
+    expect(changed.sips[0].arguments).toEqual(original.sips[0].arguments)
+    for (const invalidMarket of [
+      { ...market, rangeCount }, { ...market, rangeWidth }, { ...market, rangeBoundaries: [-5, -1, 0, 0, 3] },
+    ]) expect(() => forecastSIPmath({ ...manual, market: invalidMarket })).toThrow()
+  })
+
   it('repeats stable streams across key ordering and dates, while changes to source or role change identity', () => {
     expect(repeatable(forecastSIPmath(input))).toEqual(repeatable(forecastSIPmath({
       positions: input.positions, coefficients: input.coefficients,

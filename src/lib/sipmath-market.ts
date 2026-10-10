@@ -1,5 +1,4 @@
-import { validateMarket } from '@/domain/market'
-import { createRanges } from '@/domain/ranges'
+import { marketRanges, validateMarket } from '@/domain/market'
 import type { MarketSnapshot } from './defifa'
 import { marketData } from './market-data'
 import { buildSIPmath, type SipVariable } from './sipmath'
@@ -14,7 +13,7 @@ function supplyCount(value: string): bigint {
 /** Export observed tier categories without inventing outcomes inside their ranges. */
 export function marketSIPmath(snapshot: MarketSnapshot) {
   const definition = validateMarket(snapshot.definition)
-  const ranges = createRanges(definition.rangeCount, definition.rangeWidth)
+  const ranges = marketRanges(definition)
   if (snapshot.ranges.length !== ranges.length || snapshot.tiers.length !== ranges.length
     || ranges.some((range, index) => {
       const observed = snapshot.ranges[index]

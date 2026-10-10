@@ -22,7 +22,7 @@ export function Markets() {
   return <>
     <div className="row"><h1>Markets</h1><Link className="button primary" href="/create">Create market</Link></div>
     <div className="grid">
-      <label className="field"><span>Network</span><select value={chainId} onChange={event => setChainId(Number(event.target.value))}>{SUPPORTED_CHAINS.map(chain => <option key={chain.id} value={chain.id}>{chain.name}</option>)}</select></label>
+      <label className="field"><span>Network</span><select className="network-select" value={chainId} onChange={event => setChainId(Number(event.target.value))}>{SUPPORTED_CHAINS.map(chain => <option key={chain.id} value={chain.id}>{chain.name}</option>)}</select></label>
       <form className="field" onSubmit={event => {
         event.preventDefault()
         try {
@@ -32,7 +32,7 @@ export function Markets() {
           router.push(`/markets/${chainId}/${projectId}`)
         } catch { setOpenError('Enter a valid project ID.') }
       }}>
-        <label htmlFor="project-id"><span>Open a game</span></label><div className="inline"><input id="project-id" inputMode="numeric" placeholder="Project ID" value={projectId} onChange={event => { setProjectId(event.target.value); setOpenError('') }} maxLength={78} required /><button type="submit">Open</button></div>
+        <label htmlFor="project-id"><span>Open a game</span></label><div className="inline"><input className="project-id-input" id="project-id" inputMode="numeric" placeholder="Project ID" value={projectId} onChange={event => { setProjectId(event.target.value); setOpenError('') }} maxLength={78} required /><button type="submit">Open</button></div>
         {openError && <small className="error" role="alert">{openError}</small>}
       </form>
     </div>

@@ -41,6 +41,41 @@ describe('forecast data and payment boundary', () => {
     }))
     expect(invalid.status).toBe(400)
   })
+  it('allocates and exports uneven custom ranges without changing cutoffs or losing overflow mass', async () => {
+    const { rangeCount, rangeWidth, ...definition } = EXAMPLE_MARKET
+    const market = { ...definition, rangeBoundaries: [-5, -1, 0, .5, 3] }
+    const payload = { market, coefficients: [0, 1], positions: 100 }
+    const preview = forecastPreview(payload)
+    expect(preview.market).toEqual(market)
+    expect(preview.ranges.map(range => [range.tierId, range.lower, range.upper])).toEqual([
+      [1, null, -5], [2, -5, -1], [3, -1, 0], [4, 0, .5], [5, .5, 3], [6, 3, null],
+    ])
+    const cumulative = [0, ...market.rangeBoundaries.map(x => 1 / (1 + Math.exp(-x))), 1]
+    preview.allocation.probabilities.forEach((probability, index) => {
+      expect(probability).toBeCloseTo(cumulative[index + 1] - cumulative[index], 14)
+    })
+    expect(preview.allocation.quantities).toEqual([1, 26, 23, 12, 33, 5])
+    expect(preview.payment.valueWei).toBe('100000000000000')
+
+    const manual = { market, coefficients: [0, 1], quantities: [2, 0, 3, 0, 0, 5] }
+    expect(forecastPreview(manual).allocation).toMatchObject({
+      mode: 'manual', count: 10, tierIds: [1, 2, 3, 4, 5, 6], actualProbabilities: [.2, 0, .3, 0, 0, .5],
+    })
+    for (const valid of [payload, manual]) {
+      const response = await POST(new Request('http://localhost/api/preview', { method: 'POST', body: JSON.stringify(valid) }))
+      expect(response.status).toBe(200)
+      expect(await response.json()).toEqual(forecastPreview(valid))
+    }
+    for (const invalid of [
+      { ...payload, market: { ...market, rangeCount } },
+      { ...payload, market: { ...market, rangeWidth } },
+      { ...payload, market: { ...market, rangeBoundaries: [-5, 0, -1, .5, 3] } },
+      { ...manual, quantities: [2, 3, 5] },
+    ]) {
+      const response = await POST(new Request('http://localhost/api/preview', { method: 'POST', body: JSON.stringify(invalid) }))
+      expect(response.status).toBe(400)
+    }
+  })
   it('derives manual stake from exact exported counts and rejects a conflicting total', async () => {
     const market = { ...EXAMPLE_MARKET, rangeCount: 3 }
     const payload = { market, coefficients: [0, 1], quantities: [7, 0, 3] }

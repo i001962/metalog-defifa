@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { allocateManualPositions, allocatePositions, MAX_POSITIONS, positionDensities } from '../src/domain/allocation'
 import { cdf, coefficientsFromMoments, densityBuckets, parseCoefficientFields, parseCoefficients, pdf, quantile, validateCoefficients } from '../src/domain/distribution'
-import { decodeMarketDefinition, encodeMarketDefinition, MAX_ENTRY_DURATION_SECONDS, MAX_RESOLUTION_DURATION_SECONDS, MAX_TIMESTAMP_SECONDS, MAX_UNIT_PRICE_WEI, validateMarket, type MarketDefinition } from '../src/domain/market'
-import { binForOutcome, createRanges, formatPercentage, MAX_RANGE_COUNT, MAX_RANGE_WIDTH, MIN_RANGE_WIDTH, validateRangeWidth } from '../src/domain/ranges'
+import { decodeMarketDefinition, encodeMarketDefinition, marketRanges, MAX_ENTRY_DURATION_SECONDS, MAX_RESOLUTION_DURATION_SECONDS, MAX_TIMESTAMP_SECONDS, MAX_UNIT_PRICE_WEI, validateMarket, type MarketDefinition } from '../src/domain/market'
+import { binForOutcome, createCustomRanges, createRanges, formatPercentage, MAX_RANGE_BOUNDARY, MAX_RANGE_COUNT, MAX_RANGE_WIDTH, MIN_RANGE_WIDTH, parseRangeBoundaries, validateRangeWidth } from '../src/domain/ranges'
 
 const definition: MarketDefinition = {
   schemaVersion: 1,
@@ -337,6 +337,28 @@ describe('Ranges and indivisible positions', () => {
 })
 
 describe('Immutable market definitions', () => {
+  it('round-trips explicit cutoffs without introducing a uniform range configuration', () => {
+    const boundaries = [-10, -0.0003, 0, 0.5, 2.75]
+    const market = validateMarket({ ...definition, rangeCount: undefined, rangeWidth: undefined, rangeBoundaries: boundaries })
+    expect(Object.hasOwn(market, 'rangeCount')).toBe(false)
+    expect(Object.hasOwn(market, 'rangeWidth')).toBe(false)
+    expect(market.rangeBoundaries).toEqual(boundaries)
+    expect(decodeMarketDefinition(encodeMarketDefinition(market))).toEqual(market)
+    expect(marketRanges(market)).toEqual(createCustomRanges(boundaries))
+    boundaries[1] = -1
+    expect(market.rangeBoundaries?.[1]).toBe(-0.0003)
+    for (const mixed of [
+      { ...market, rangeCount: 6 }, { ...market, rangeWidth: 1 }, { ...definition, rangeBoundaries: [-1, 1] },
+    ]) {
+      expect(() => validateMarket(mixed)).toThrow('not both')
+      expect(() => marketRanges(mixed as MarketDefinition)).toThrow('not both')
+      expect(() => decodeMarketDefinition('data:application/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(mixed)))).toThrow('not both')
+    }
+    for (const boundaries of [null, [], [-1, -1], [-1, '1'], [-1, 0.00001], [1, -1]]) {
+      expect(() => validateMarket({ ...market, rangeBoundaries: boundaries })).toThrow()
+    }
+  })
+
   it('round-trips UTF-8 through a data URI and retains scorecard settlement authority', () => {
     const market = { ...definition, prompt: 'BTC, café, 東京: change 📈?', rangeWidth: 2.55 }
     const uri = encodeMarketDefinition(market)
@@ -382,5 +404,49 @@ describe('Immutable market definitions', () => {
     for (const uri of ['https://example.com/market', 'data:application/json;charset=utf-8,%ZZ', 'data:application/json;charset=utf-8,[]']) {
       expect(() => decodeMarketDefinition(uri)).toThrow()
     }
+  })
+})
+
+describe('Explicit range cutoffs', () => {
+  it('preserves exact labels, uneven widths, even bin counts and lower-inclusive edge membership', () => {
+    const boundaries = [-10, -0.0003, 0, 0.5, 2.75]
+    const ranges = createCustomRanges(boundaries)
+    expect(ranges.map(range => range.label)).toEqual([
+      '< -10%', '-10% to < -0.0003%', '-0.0003% to < 0%', '0% to < +0.5%', '+0.5% to < +2.75%', '≥ +2.75%',
+    ])
+    expect(ranges.map(range => range.tierId)).toEqual([1, 2, 3, 4, 5, 6])
+    expect(binForOutcome(ranges, -Number.MAX_VALUE)).toBe(ranges[0])
+    expect(binForOutcome(ranges, Number.MAX_VALUE)).toBe(ranges.at(-1))
+    for (let index = 0; index < boundaries.length; index++) {
+      expect(ranges[index].upper).toBe(boundaries[index])
+      expect(ranges[index + 1].lower).toBe(boundaries[index])
+      expect(binForOutcome(ranges, boundaries[index])).toBe(ranges[index + 1])
+    }
+    const allocation = allocatePositions([0, 1, 0, 0, 0, 0], ranges, 100)
+    expect(allocation.quantities.reduce((sum, value) => sum + value, 0)).toBe(100)
+    const densities = positionDensities(ranges, allocation.quantities)
+    for (let index = 1; index < ranges.length - 1; index++) {
+      expect(densities[index].density! * (ranges[index].upper! - ranges[index].lower!)).toBeCloseTo(allocation.actualProbabilities[index], 14)
+    }
+  })
+
+  it('validates count, strict order, decimal precision and safely representable spans', () => {
+    expect(createCustomRanges([-MAX_RANGE_BOUNDARY, MAX_RANGE_BOUNDARY])).toHaveLength(3)
+    expect(createCustomRanges(Array.from({ length: 60 }, (_, index) => index / 10))).toHaveLength(61)
+    expect(createCustomRanges([-0, 0.0003])[0].upper).toBe(0)
+    for (const boundaries of [
+      [], [0], Array.from({ length: 61 }, (_, index) => index), [0, 0], [1, -1], [-0, 0],
+      [-1, NaN], [-1, Infinity], [-Infinity, 1], [-1, 0.00001], [-1, 0.30000000000000004],
+      [-MAX_RANGE_BOUNDARY - 1, 1], [-1, MAX_RANGE_BOUNDARY + 1], [-1e308, 1e308], Array(2),
+    ]) expect(() => createCustomRanges(boundaries)).toThrow()
+  })
+
+  it('retains incomplete text as invalid and accepts complete signed decimal cutoffs', () => {
+    expect(parseRangeBoundaries([' -10 ', '-.0003', '-0', '+0.5', '2.7500'])).toEqual([-10, -0.0003, 0, 0.5, 2.75])
+    for (const incomplete of ['', ' ', '-', '+', '.', '-.', '1.', '1e', '1e2', '0x10', 'Infinity', 'NaN', '1,2', '0.00001']) {
+      expect(() => parseRangeBoundaries(['-10', incomplete])).toThrow('complete percentage')
+    }
+    expect(() => parseRangeBoundaries(['0', '0.0000'])).toThrow('increasing')
+    expect(() => parseRangeBoundaries(['0'])).toThrow('cutoffs')
   })
 })
