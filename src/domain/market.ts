@@ -32,10 +32,10 @@ const MAX_METADATA_LENGTH = 32_768
 
 export function parseDefaultDelegate(value: unknown): Address | undefined {
   if (value === undefined) return undefined
-  if (typeof value !== 'string') throw new Error('Default delegate must be an Ethereum address.')
+  if (typeof value !== 'string') throw new Error('Oracle must be an Ethereum address.')
   const address = value.trim()
   if (address === '') return undefined
-  if (!isAddress(address, { strict: true })) throw new Error('Enter a valid Ethereum address for the default delegate, with a valid checksum if mixed case.')
+  if (!isAddress(address, { strict: true })) throw new Error('Enter a valid Ethereum address for the oracle, with a valid checksum if mixed case.')
   const canonical = getAddress(address)
   return canonical === zeroAddress ? undefined : canonical
 }

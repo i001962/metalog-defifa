@@ -117,9 +117,9 @@ test('unequal range definitions preserve exact intervals and NFT allocations in 
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
 })
 
-test('optional default delegate is canonical in definitions and preserves editable text across layouts', async ({ page, request }) => {
+test('optional oracle is canonical in definitions and preserves editable text across layouts', async ({ page, request }) => {
   await openDefinition(page)
-  const delegate = page.getByLabel('Default delegate', { exact: true })
+  const delegate = page.getByLabel('Oracle', { exact: true })
   const download = page.getByRole('button', { name: 'Download definition', exact: true })
   const create = page.getByRole('button', { name: 'Connect to create', exact: true })
   const simple = page.getByRole('button', { name: 'Simple', exact: true })

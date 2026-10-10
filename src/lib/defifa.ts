@@ -134,7 +134,7 @@ export async function readMarketAt(
     throw new Error('The market metadata does not match its resolution time or tiers.')
   }
   if (!sameAddress(defaultDelegate, definition.defaultAttestationDelegate ?? zeroAddress)) {
-    throw new Error('The market default delegate does not match its onchain setting.')
+    throw new Error('The market oracle does not match its onchain setting.')
   }
   const tiers = await Promise.all(rawTiers.map(async (tier, index) => {
     const tierId = Number(tier.id)
@@ -371,7 +371,7 @@ export async function prepareCreateMarket(
       { label: 'Question', value: definition.prompt },
       { label: 'Source', value: definition.source },
       { label: 'Resolution rule', value: definition.resolutionRule },
-      { label: 'Default delegate', value: definition.defaultAttestationDelegate ?? 'None; NFT recipients delegate to themselves.' },
+      { label: 'Oracle', value: definition.defaultAttestationDelegate ?? 'None; position holders retain voting power.' },
       { label: 'Ranges', value: String(ranges.length) },
       definition.rangeBoundaries === undefined
         ? { label: 'Range width', value: `${definition.rangeWidth} percentage points` }
@@ -442,8 +442,8 @@ export async function prepareEntry(
       { label: 'Question', value: definition.prompt },
       { label: 'Positions', value: String(expected.count) },
       { label: 'Cost', value: `${formatEther(amount)} ETH` },
-      { label: 'Voting delegate', value: delegate },
-      { label: 'Delegation change', value: 'Applies to all your existing and newly minted positions in the selected ranges. You can change delegates while entry is open.' },
+      { label: 'Voting address', value: delegate },
+      { label: 'Voting power', value: 'Applies to all your existing and newly minted positions in the selected ranges. You can change the voting address while entries are open.' },
       ...expected.quantities.flatMap((quantity, index) => quantity > 0
         ? [{ label: current.ranges[index].label, value: String(quantity) }] : []),
     ],

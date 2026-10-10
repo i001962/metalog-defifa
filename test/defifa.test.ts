@@ -156,9 +156,9 @@ describe('Defifa launch calldata and fresh state', () => {
     const data = decodeFunctionData({ abi: DEFIFA_ABI.DefifaDeployer, data: launch.data }).args![0] as Record<string, unknown>
     expect(data.defaultAttestationDelegate).toBe(hook)
     expect(decodeMarketDefinition(data.projectUri as string)).toEqual(delegated)
-    expect(launch.details).toContainEqual({ label: 'Default delegate', value: hook })
+    expect(launch.details).toContainEqual({ label: 'Oracle', value: hook })
     uri = data.projectUri as string
-    await expect(readMarket(chainId, '7')).rejects.toThrow('default delegate')
+    await expect(readMarket(chainId, '7')).rejects.toThrow('oracle')
     observedDelegate = hook
     now = definition.entryOpensAt + 1
     const market = await readMarket(chainId, '7')
@@ -168,8 +168,8 @@ describe('Defifa launch calldata and fresh state', () => {
     const decoded = decodeFunctionData({ abi: DEFIFA_ABI.JBMultiTerminal, data: entry.data })
     const [delegate] = decodeAbiParameters([{ type: 'address' }, { type: 'uint16[]' }], `0x${(decoded.args![6] as Hex).slice(130)}`)
     expect(delegate).toBe(hook)
-    expect(entry.details).toContainEqual({ label: 'Voting delegate', value: hook })
-    expect(entry.details?.find(detail => detail.label === 'Delegation change')?.value).toContain('all your existing')
+    expect(entry.details).toContainEqual({ label: 'Voting address', value: hook })
+    expect(entry.details?.find(detail => detail.label === 'Voting power')?.value).toContain('all your existing')
     await expect(verifyDefifaTransactionReceipt(entry, mintReceipt([1, 3]))).resolves.toBeUndefined()
     uri = encodeMarketDefinition(definition)
     observedDelegate = zeroAddress

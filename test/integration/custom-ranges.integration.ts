@@ -108,7 +108,7 @@ it('creates unequal ranges and recovers their curve-derived mint without sending
     for (const tierId of [1, 2, 3, 4, 5]) {
       expect(await fork.client.readContract({ address: market.hook, abi: DEFIFA_ABI.DefifaHook, functionName: 'getTierDelegateOf', args: [account, BigInt(tierId)] })).toBe(definition.defaultAttestationDelegate)
     }
-    expect(request.details).toContainEqual({ label: 'Voting delegate', value: definition.defaultAttestationDelegate })
+    expect(request.details).toContainEqual({ label: 'Voting address', value: definition.defaultAttestationDelegate })
     sent.push({ title: 'Recovered custom-range curve entry', hash: recovered.transactionHash, blockNumber: String(recovered.blockNumber) })
   } finally {
     if (originalRpcConfiguration === undefined) delete process.env.METALOG_RPC_URLS
