@@ -27,6 +27,8 @@ export function CreateMarket({ now }: { now: number }) {
   const [rangeCount, setRangeCount] = useState(String(DEFAULT_RANGE_COUNT))
   const [rangeWidth, setRangeWidth] = useState(String(DEFAULT_RANGE_WIDTH))
   const [rangeMode, setRangeMode] = useState<RangeMode>('simple')
+  const [selectedRange, setSelectedRange] = useState<number | null>(null)
+  const [selectedBoundary, setSelectedBoundary] = useState<number | null>(null)
   const [boundaries, setBoundaries] = useState<string[] | null>(null)
   const [lastRanges, setLastRanges] = useState<Partial<Record<RangeMode, RangeBin[]>>>(() => ({ simple: createRanges() }))
   const [price, setPrice] = useState('0.000001')
@@ -69,6 +71,8 @@ export function CreateMarket({ now }: { now: number }) {
       setBoundaries(seed.slice(0, -1).map(range => String(range.upper)))
       setLastRanges(previous => ({ ...previous, advanced: seed }))
     }
+    setSelectedRange(null)
+    setSelectedBoundary(null)
     setRangeMode(next)
   }
   function applyShortSchedule() {
@@ -121,15 +125,19 @@ export function CreateMarket({ now }: { now: number }) {
       </>}
       <label className="field"><span>Price per position (ETH)</span><input inputMode="decimal" required value={price} onChange={event => setPrice(event.target.value)} /></label>
     </div>
-    <RangePreview ranges={ranges} stale={Boolean(rangeDraft.error)} />
+    <RangePreview ranges={ranges} stale={Boolean(rangeDraft.error)} selected={selectedRange} boundary={selectedBoundary}
+      onSelect={tier => { setSelectedRange(tier); setSelectedBoundary(null) }}
+      onBoundaryFocus={index => { setSelectedBoundary(index); setSelectedRange(null) }}
+      onBoundaryChange={rangeMode === 'advanced' ? (index, value) => setBoundaries(previous => previous!.map((item, position) => position === index ? value : item)) : undefined} />
     <div>{rangeMode === 'advanced' ? <>
       <p className="hint">Set ascending percentage boundaries. The outer ranges include all overflow.</p>
-      <div className="range-boundaries">{boundaries?.map((value, index) => <div className="field" key={index}>
+      <div className="range-boundaries">{boundaries?.map((value, index) => <div className="field boundary-field" key={index} data-highlighted={selectedBoundary === index || selectedRange === index + 1 || selectedRange === index + 2}>
         <label htmlFor={`range-boundary-${index}`}><span>Boundary {index + 1} (%)</span></label>
         <div className="inline">
-          <input id={`range-boundary-${index}`} inputMode="decimal" maxLength={24} required value={value} aria-invalid={Boolean(rangeDraft.error)} onChange={event => setBoundaries(previous => previous!.map((boundary, position) => position === index ? event.target.value : boundary))} />
+          <input id={`range-boundary-${index}`} onFocus={() => { setSelectedBoundary(index); setSelectedRange(null) }} inputMode="decimal" maxLength={24} required value={value} aria-invalid={Boolean(rangeDraft.error)} onChange={event => setBoundaries(previous => previous!.map((boundary, position) => position === index ? event.target.value : boundary))} />
           <button className="remove-boundary" type="button" aria-label={`Remove boundary ${index + 1}`} disabled={boundaries.length <= MIN_RANGE_COUNT - 1} onClick={() => setBoundaries(previous => previous!.filter((_, position) => position !== index))}>×</button>
         </div>
+        <small>Between ranges {index + 1} and {index + 2}</small>
       </div>)}</div>
       <button type="button" disabled={(boundaries?.length ?? 0) >= MAX_RANGE_COUNT - 1} onClick={() => setBoundaries(previous => [...previous!, ''])}>Add boundary</button>
     </> : <p className="hint">Equal-width ranges centered on 0%, plus one overflow range at each end.</p>}</div>
