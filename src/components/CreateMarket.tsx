@@ -15,6 +15,7 @@ import { RangePreview } from './RangePreview'
 const dateInput = (seconds: number) => new Date(seconds * 1000).toISOString().slice(0, 16)
 const seconds = (value: string) => Math.floor(Date.parse(`${value}Z`) / 1000)
 type RangeMode = 'simple' | 'advanced'
+const describeBoundaryIssue = (message: string) => message.replace(/Boundary (\d+)/g, (_, number: string) => `Edge between ranges ${number} and ${Number(number) + 1}`)
 
 export function CreateMarket({ now }: { now: number }) {
   const [prompt, setPrompt] = useState('')
@@ -168,23 +169,33 @@ export function CreateMarket({ now }: { now: number }) {
       </>}
       <label className="field"><span>Price per position (ETH)</span><input inputMode="decimal" required value={price} onChange={event => setPrice(event.target.value)} /></label>
     </div>
-    <div aria-live="polite">{rangeError && <p className="range-alert error" role="alert">{rangeError} Chart shows the last valid ranges.</p>}</div>
+    <div aria-live="polite">{rangeError && <p className="range-alert error" role="alert">{describeBoundaryIssue(rangeError)} Chart shows the last valid ranges.</p>}</div>
     <RangePreview ranges={ranges} stale={Boolean(rangeError)} invalidBoundaries={Object.keys(boundaryIssues).map(key => { const index = Number(key); const raw = boundaries?.[index]?.trim(); const value = raw ? Number(raw) : NaN; return { index, value: Number.isFinite(value) ? value : null } })} selected={selectedRange} boundary={selectedBoundary}
       onSelect={tier => { setSelectedRange(tier); setSelectedBoundary(null) }}
-      onBoundaryFocus={index => { setSelectedBoundary(index); setSelectedRange(null) }}
+      onBoundaryFocus={index => { setSelectedBoundary(index); setSelectedRange(index + 1) }}
       onBoundaryChange={rangeMode === 'advanced' ? (index, value) => editBoundary(index, value) : undefined} />
     <div>{rangeMode === 'advanced' ? <>
-      <p className="hint">Edited boundaries stay fixed. Other boundaries spread evenly through the remaining space.</p>
-      <div className="range-boundaries">{boundaries?.map((value, index) => <div className="field boundary-field" key={index} data-invalid={Boolean(boundaryIssues[index])} data-highlighted={selectedBoundary === index || selectedRange === index + 1 || selectedRange === index + 2}>
-        <label htmlFor={`range-boundary-${index}`}><span>Boundary {index + 1} (%)</span></label>
-        <div className="inline">
-          <input id={`range-boundary-${index}`} onFocus={() => { setSelectedBoundary(index); setSelectedRange(null) }} inputMode="decimal" maxLength={24} required value={value} aria-invalid={Boolean(boundaryIssues[index])} aria-describedby={`range-boundary-help-${index} range-boundary-error-${index}`} onChange={event => editBoundary(index, event.target.value)} />
-          <button className="remove-boundary" type="button" aria-label={`Remove boundary ${index + 1}`} disabled={boundaries.length <= MIN_RANGE_COUNT - 1} onClick={() => removeBoundary(index)}>×</button>
+      <p className="hint">Each range has a lower and upper edge. Shared edges update both neighboring ranges.</p>
+      <div className="range-boundaries">{boundaries && Array.from({ length: boundaries.length + 1 }, (_, rangeIndex) => {
+        const tier = rangeIndex + 1
+        return <div className="range-card" role="group" aria-label={`Range ${tier}`} key={tier} data-tier-id={tier} data-highlighted={selectedRange === tier}>
+          <div className="row"><h3>Range {tier}</h3>{rangeIndex < boundaries.length && <button className="remove-boundary" type="button" aria-label={`Remove boundary ${tier}`} title={`Merge ranges ${tier} and ${tier + 1}`} disabled={boundaries.length <= MIN_RANGE_COUNT - 1} onClick={() => removeBoundary(rangeIndex)}>×</button>}</div>
+          <div className="range-card-edges">{(['lower', 'upper'] as const).map(edge => {
+            const index = edge === 'lower' ? rangeIndex - 1 : rangeIndex
+            const id = `range-${tier}-${edge}`
+            if (index < 0 || index >= boundaries.length) return <div className="field" key={edge}><span>{edge === 'lower' ? 'Lower' : 'Upper'}</span><small>No {edge} limit</small></div>
+            const neighbor = edge === 'lower' ? tier - 1 : tier + 1
+            const extent = index === 0 || index === boundaries.length - 1
+            return <div className="field edge-field" key={edge} data-invalid={Boolean(boundaryIssues[index])}>
+              <label htmlFor={id}><span>{edge === 'lower' ? 'Lower (%)' : 'Upper (%)'}</span></label>
+              <input id={id} aria-label={`Range ${tier} ${edge} (%)`} data-edge={edge} data-boundary-index={index} onFocus={() => { setSelectedBoundary(index); setSelectedRange(tier) }} inputMode="decimal" maxLength={24} required value={boundaries[index]} aria-invalid={Boolean(boundaryIssues[index])} aria-describedby={`${id}-help ${id}-error`} onChange={event => editBoundary(index, event.target.value)} />
+              <small id={`${id}-help`}>Shared with range {neighbor}</small>
+              <label className="boundary-fixed"><input type="checkbox" aria-label={`Fix range ${tier} ${edge} edge`} checked={extent || fixedBoundaries.includes(index)} disabled={extent} onFocus={() => { setSelectedBoundary(index); setSelectedRange(tier) }} onChange={event => setBoundaryFixed(index, event.target.checked)} />{extent ? 'Extent' : 'Fixed'}</label>
+              <small id={`${id}-error`} className="error">{boundaryIssues[index] && describeBoundaryIssue(boundaryIssues[index])}</small>
+            </div>
+          })}</div>
         </div>
-        <small id={`range-boundary-help-${index}`}>Between ranges {index + 1} and {index + 2}</small>
-        <label className="boundary-fixed"><input type="checkbox" aria-label={`Fix boundary ${index + 1}`} checked={index === 0 || index === boundaries.length - 1 || fixedBoundaries.includes(index)} disabled={index === 0 || index === boundaries.length - 1} onChange={event => setBoundaryFixed(index, event.target.checked)} />{index === 0 || index === boundaries.length - 1 ? 'Extent' : 'Fixed'}</label>
-        <small id={`range-boundary-error-${index}`} className="error">{boundaryIssues[index]}</small>
-      </div>)}</div>
+      })}</div>
       <button type="button" disabled={(boundaries?.length ?? 0) >= MAX_RANGE_COUNT - 1} onClick={() => { setFixedBoundaries(previous => [...new Set([...previous, boundaries!.length - 1])]); setBoundaries(previous => [...previous!, '']) }}>Add boundary</button>
     </> : <p className="hint">Equal-width ranges centered on 0%, plus one overflow range at each end.</p>}</div>
     <details><summary>View ranges</summary>{rangeError && <p className="hint">Showing the last valid ranges.</p>}<div className="table-wrap"><table><thead><tr><th>NFT tier</th><th>Range</th></tr></thead><tbody>{ranges.map(range => <tr key={range.tierId}><td>{range.tierId}</td><td>{range.label}</td></tr>)}</tbody></table></div></details>

@@ -59,7 +59,7 @@ section[aria-labelledby="your-view"] { margin-top: 32px; }
 .positions-table th { position: sticky; top: 0; z-index: 1; background: var(--paper); }
 .positions-table th, .positions-table td { padding-block: 5px; }
 .range-editor { max-width: 32rem; margin-bottom: 20px; }
-.range-boundaries { display: grid; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); gap: 12px 20px; margin-bottom: 14px; }
+.range-boundaries { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr)); gap: 12px 20px; margin-bottom: 14px; }
 .range-boundaries .field { margin-bottom: 0; }
 .range-boundaries .inline { gap: 8px; }
 .remove-boundary { padding-inline: 10px; }
@@ -153,12 +153,17 @@ dialog .actions { justify-content: flex-end; }
 .range-preview-axis span:first-child { transform: none; }
 .range-preview-axis span:last-child { transform: translateX(-100%); }
 .range-preview-axis-label { text-align: center; font-size: 11px; color: var(--muted); }
-.boundary-field { border-left: 3px solid transparent; padding-left: 8px; }
-.boundary-field[data-highlighted="true"] { border-color: var(--accent); background: #f3f4fb; }
+.range-card { border: 1px solid var(--line); border-left: 3px solid var(--line); padding: 12px; min-width: 0; }
+.range-card[data-highlighted="true"] { border-left-color: var(--accent); background: #f3f4fb; }
+.range-card h3 { margin: 0; }
+.range-card .row { margin-bottom: 10px; min-height: 28px; }
+.range-card .remove-boundary { padding: 2px 8px; }
+.range-card-edges { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.range-card-edges input[inputmode="decimal"] { max-width: 100%; }
 @media (max-width: 520px) { .range-preview-map { grid-template-columns: 3.5rem minmax(0, 1fr) 3.5rem; gap: 6px; } .range-preview-axis span:nth-child(2), .range-preview-axis span:nth-child(4) { display: none; } }
 
-.boundary-field[data-invalid="true"] { border-color: #a72828; background: #fff0f0; }
-.boundary-field input[aria-invalid="true"] { border: 2px solid #a72828; }
+.edge-field[data-invalid="true"] { border-color: #a72828; background: #fff0f0; }
+.edge-field input[aria-invalid="true"] { border: 2px solid #a72828; }
 .boundary-fixed { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
 .boundary-fixed input { width: auto; min-height: 0; margin: 0; padding: 0; }
 .range-alert { border-left: 3px solid #a72828; padding: 8px; background: #fff0f0; margin-top: 16px; }

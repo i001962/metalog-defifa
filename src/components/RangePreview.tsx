@@ -71,7 +71,7 @@ export function RangePreview({ ranges, stale, invalidBoundaries, selected, bound
       </div>
       <button type="button" className="range-overflow" aria-label={name(last)} aria-pressed={selected === last.tierId} onFocus={() => onSelect(last.tierId)} onMouseEnter={() => onSelect(last.tierId)} onClick={() => onSelect(last.tierId)}>{last.tierId} →<span>{last.label}</span></button>
     </div>
-    <figcaption>{boundary !== null && invalidBoundaries.some(item => item.index === boundary) ? `Boundary ${boundary + 1} needs attention. Chart shows the last valid ranges.` : boundary !== null && cutoffs[boundary] !== undefined ? `Boundary ${boundary + 1}: ${formatPercentage(cutoffs[boundary], RANGE_DECIMAL_PLACES)} · Between ranges ${boundary + 1} and ${boundary + 2}` : active ? `${name(active)}${active.lower === null || active.upper === null ? ' · Overflow' : ''}` : 'Select a range to highlight its boundaries.'}</figcaption>
+    <figcaption>{boundary !== null && invalidBoundaries.some(item => item.index === boundary) ? `Edge between ranges ${boundary + 1} and ${boundary + 2} needs attention. Chart shows the last valid ranges.` : boundary !== null && cutoffs[boundary] !== undefined ? `Edge between ranges ${boundary + 1} and ${boundary + 2}: ${formatPercentage(cutoffs[boundary], RANGE_DECIMAL_PLACES)}` : active ? `${name(active)}${active.lower === null || active.upper === null ? ' · Overflow' : ''}` : 'Select a range to highlight its boundaries.'}</figcaption>
     <p className="hint">{onBoundaryChange ? 'Drag a boundary. Unfixed boundaries recalibrate automatically. Arrow keys adjust by 0.01%; Shift adjusts by 1%.' : 'Choose Advanced to drag individual boundaries. Your Simple settings are preserved.'}</p>
   </figure>
 }
