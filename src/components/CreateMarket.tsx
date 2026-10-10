@@ -10,6 +10,7 @@ import { downloadJson } from '@/lib/forecast'
 import { rememberMarket } from '@/lib/recent-markets'
 import { useWallet } from '@/providers/Providers'
 import { useTransactions } from '@/providers/Transactions'
+import { RangePreview } from './RangePreview'
 
 const dateInput = (seconds: number) => new Date(seconds * 1000).toISOString().slice(0, 16)
 const seconds = (value: string) => Math.floor(Date.parse(`${value}Z`) / 1000)
@@ -120,6 +121,7 @@ export function CreateMarket({ now }: { now: number }) {
       </>}
       <label className="field"><span>Price per position (ETH)</span><input inputMode="decimal" required value={price} onChange={event => setPrice(event.target.value)} /></label>
     </div>
+    <RangePreview ranges={ranges} stale={Boolean(rangeDraft.error)} />
     <div>{rangeMode === 'advanced' ? <>
       <p className="hint">Set ascending percentage boundaries. The outer ranges include all overflow.</p>
       <div className="range-boundaries">{boundaries?.map((value, index) => <div className="field" key={index}>
