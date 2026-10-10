@@ -43,6 +43,11 @@ export function createRanges(count = DEFAULT_RANGE_COUNT, width = DEFAULT_RANGE_
     // The advertised NFT labels and allocation boundaries must describe the same intervals.
     return Number(((index - finiteCount / 2) * width).toFixed(RANGE_DECIMAL_PLACES))
   })
+  return rangesFromBoundaries(boundaries)
+}
+
+function rangesFromBoundaries(boundaries: readonly number[]): RangeBin[] {
+  const count = boundaries.length + 1
   return Array.from({ length: count }, (_, index) => {
     const lower = index === 0 ? null : boundaries[index - 1]
     const upper = index === count - 1 ? null : boundaries[index]
