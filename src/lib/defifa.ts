@@ -1,18 +1,19 @@
 import {
   decodeAbiParameters, decodeFunctionData, encodeAbiParameters, encodeFunctionData, formatEther, getAddress,
-  parseEventLogs, zeroAddress, zeroHash, type Address, type Hex, type PublicClient, type TransactionReceipt,
+  parseAbi, parseEventLogs, zeroAddress, type Address, type Hex, type PublicClient, type TransactionReceipt,
 } from 'viem'
 import { createHookMetadata, hookMetadataId } from '@bananapus/nana-sdk-core'
 import { allocateManualPositions, allocatePositions, type Allocation } from '../domain/allocation'
 import { validateCoefficients, type Coefficients } from '../domain/distribution'
 import {
-  decodeMarketDefinition, encodeMarketDefinition, marketRanges, SCORECARD_TIMEOUT_BUFFER_SECONDS, validateMarket,
+  encodeMarketDefinition, marketRanges, SCORECARD_TIMEOUT_BUFFER_SECONDS, validateMarket,
   type MarketDefinition,
 } from '../domain/market'
 import { formatPercentage, RANGE_DECIMAL_PLACES, type RangeBin } from '../domain/ranges'
 import {
   assertChain, assertGameClone, contractRead, DEFIFA_ABI, deploymentForChain, sameAddress, verifyDefifaDeployment,
 } from './defifa-deployment'
+import { loadMarketMetadata, publishMarketMetadata, type PublishedMarketMetadata } from './market-metadata'
 import type { PreparedTransaction } from './transaction'
 import { publicClientForChain, SUPPORTED_CHAINS } from './wallet'
 
@@ -43,7 +44,7 @@ export type MarketSnapshot = {
   noContestTriggered: boolean
 }
 
-type RawTier = { id: number; price: bigint; reserveFrequency: number; remainingSupply: number }
+type RawTier = { id: number; price: bigint; reserveFrequency: number; remainingSupply: number; encodedIpfsUri: Hex }
 type RulesetResult = readonly [{ id: number }, { dataHook: Address }]
 
 export function projectNumber(projectId: string): bigint {
@@ -103,7 +104,8 @@ export async function readMarketAt(
     || !sameAddress(token, NATIVE_TOKEN) || !sameAddress(pot[1], NATIVE_TOKEN) || Number(pot[2]) !== 18) {
     throw new Error('This project is not a supported native-token Defifa market.')
   }
-  const definition = decodeMarketDefinition(uri)
+  const published = await loadMarketMetadata(uri)
+  const definition = published.definition
   const ranges = marketRanges(definition)
   if (Number(times[0]) !== definition.entryClosesAt || Number(times[2]) !== 0
     || Number(times[1]) !== definition.entryClosesAt - definition.entryOpensAt) {
@@ -136,6 +138,16 @@ export async function readMarketAt(
   if (!sameAddress(defaultDelegate, definition.defaultAttestationDelegate ?? zeroAddress)) {
     throw new Error('The market oracle does not match its onchain setting.')
   }
+  if (published.mode === 'ipfs') {
+    const metadataAbi = parseAbi(['function contractURI() view returns (string)', 'function baseURI() view returns (string)'])
+    const [contractUri, baseUri] = await Promise.all([
+      client.readContract({ address: hook, abi: metadataAbi, functionName: 'contractURI', blockNumber }),
+      client.readContract({ address: hook, abi: metadataAbi, functionName: 'baseURI', blockNumber }),
+    ])
+    if (contractUri !== published.contractUri || baseUri !== '') {
+      throw new Error('The NFT collection metadata does not match this market.')
+    }
+  }
   const tiers = await Promise.all(rawTiers.map(async (tier, index) => {
     const tierId = Number(tier.id)
     const [name, supply, redeemed] = await Promise.all([
@@ -144,7 +156,8 @@ export async function readMarketAt(
       Number(phase) === 4 ? read<bigint>(hook, 'DefifaHook', 'tokensRedeemedFrom', [BigInt(tierId)]) : Promise.resolve(0n),
     ])
     if (tierId !== ranges[index].tierId || name !== ranges[index].label || Number(tier.reserveFrequency) !== 0
-      || tier.price !== BigInt(definition.unitPriceWei)) {
+      || tier.price !== BigInt(definition.unitPriceWei)
+      || (published.mode === 'ipfs' && tier.encodedIpfsUri !== published.encodedTierUris[index])) {
       throw new Error('The onchain ranges, price or reserves do not match this market.')
     }
     return {
@@ -216,13 +229,13 @@ export async function listMarkets(chainId: number): Promise<{ markets: MarketSna
   return { markets, errors }
 }
 
-function launchData(definition: MarketDefinition, chainId: number) {
+function launchData(definition: MarketDefinition, chainId: number, published: PublishedMarketMetadata) {
   const d = deploymentForChain(chainId)
-  const uri = encodeMarketDefinition(definition)
   return {
-    name: definition.prompt, projectUri: uri, contractUri: uri, baseUri: '',
-    tiers: marketRanges(definition).map(range => ({
-      name: range.label, reservedRate: 0, reservedTokenBeneficiary: zeroAddress, encodedIpfsUri: zeroHash,
+    name: definition.prompt, projectUri: published.projectUri, contractUri: published.contractUri,
+    baseUri: '',
+    tiers: marketRanges(definition).map((range, index) => ({
+      name: range.label, reservedRate: 0, reservedTokenBeneficiary: zeroAddress, encodedIpfsUri: published.encodedTierUris[index],
       shouldUseReservedTokenBeneficiaryAsDefault: false,
     })),
     tierPrice: BigInt(definition.unitPriceWei), token: { token: NATIVE_TOKEN, decimals: 18, currency: 1 },
@@ -243,8 +256,9 @@ export function createdMarketId(receipt: TransactionReceipt): string {
 }
 
 async function verifyLaunchReceipt(
-  client: PublicClient, chainId: number, owner: Address, definition: MarketDefinition, receipt: TransactionReceipt,
+  client: PublicClient, chainId: number, owner: Address, published: PublishedMarketMetadata, receipt: TransactionReceipt,
 ): Promise<void> {
+  const definition = published.definition
   const d = deploymentForChain(chainId)
   const projectId = createdMarketId(receipt)
   const launch = parseEventLogs({ abi: DEFIFA_ABI.DefifaDeployer, logs: receipt.logs, eventName: 'LaunchGame', strict: true })
@@ -253,6 +267,8 @@ async function verifyLaunchReceipt(
     throw new Error('The confirmed market does not match its creator.')
   }
   const block = await client.getBlock({ blockNumber: receipt.blockNumber })
+  const uri = await contractRead<string>(client, d.controller, 'JBController', 'uriOf', [BigInt(projectId)], block.number)
+  if (uri !== published.projectUri) throw new Error('The confirmed metadata URI does not match the reviewed transaction.')
   const market = await readMarketAt(client, chainId, projectId, block.number, Number(block.timestamp))
   if (encodeMarketDefinition(market.definition) !== encodeMarketDefinition(definition)) {
     throw new Error('The confirmed market definition does not match the reviewed transaction.')
@@ -295,12 +311,13 @@ export async function verifyDefifaTransactionReceipt(
       return verifyLifecycleReceipt(request, receipt)
     }
     const launch = decoded.args?.[0] as { projectUri: string }
-    const definition = decodeMarketDefinition(launch.projectUri)
+    const published = await loadMarketMetadata(launch.projectUri)
+    const definition = published.definition
     const expectedData = encodeFunctionData({
-      abi: DEFIFA_ABI.DefifaDeployer, functionName: 'launchGameWith', args: [launchData(definition, request.chainId)],
+      abi: DEFIFA_ABI.DefifaDeployer, functionName: 'launchGameWith', args: [launchData(definition, request.chainId, published)],
     })
     if (expectedData !== request.data) throw new Error('The recorded creation differs from the supported market definition.')
-    return verifyLaunchReceipt(client, request.chainId, owner, definition, receipt)
+    return verifyLaunchReceipt(client, request.chainId, owner, published, receipt)
   }
   if (!sameAddress(request.to, d.terminal)) {
     if (request.value !== 0n) throw new Error('The recorded transaction has an unsupported target.')
@@ -362,14 +379,18 @@ export async function prepareCreateMarket(
     if (definition.entryOpensAt <= Number(block.timestamp)) throw new Error('Entry must open in the future. Update the opening time.')
     return contractRead<bigint>(client, d.projects, 'JBProjects', 'creationFee', [], block.number)
   }
+  await freshFee()
+  const published = await publishMarketMetadata(definition)
+  if (published.mode !== 'ipfs') throw new Error('Market metadata must be published through Center.')
   const fee = await freshFee()
   const ranges = marketRanges(definition)
-  const data = encodeFunctionData({ abi: DEFIFA_ABI.DefifaDeployer, functionName: 'launchGameWith', args: [launchData(definition, chainId)] })
+  const data = encodeFunctionData({ abi: DEFIFA_ABI.DefifaDeployer, functionName: 'launchGameWith', args: [launchData(definition, chainId, published)] })
   return {
     chainId, account: owner, to: d.deployer, data, value: fee, title: 'Create market',
     details: [
       { label: 'Question', value: definition.prompt },
       { label: 'Source', value: definition.source },
+      { label: 'Metadata', value: published.projectUri },
       { label: 'Resolution rule', value: definition.resolutionRule },
       { label: 'Oracle', value: definition.defaultAttestationDelegate ?? 'None; position holders retain voting power.' },
       { label: 'Ranges', value: String(ranges.length) },
@@ -383,9 +404,14 @@ export async function prepareCreateMarket(
       { label: 'Creation fee', value: `${formatEther(fee)} ETH` },
     ],
     reverify: async () => {
+      const currentMetadata = await loadMarketMetadata(published.projectUri)
+      if (encodeMarketDefinition(currentMetadata.definition) !== encodeMarketDefinition(definition)
+        || JSON.stringify(currentMetadata.encodedTierUris) !== JSON.stringify(published.encodedTierUris)) {
+        throw new Error('The metadata no longer matches the reviewed market.')
+      }
       if (await freshFee() !== fee) throw new Error('The creation fee changed. Review a fresh transaction.')
     },
-    verifyReceipt: receipt => verifyLaunchReceipt(client, chainId, owner, definition, receipt),
+    verifyReceipt: receipt => verifyLaunchReceipt(client, chainId, owner, published, receipt),
   }
 }
 

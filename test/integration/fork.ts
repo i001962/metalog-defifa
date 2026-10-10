@@ -7,6 +7,7 @@ import {
   type Address, type PublicClient,
 } from 'viem'
 import { chainForId } from '../../src/lib/wallet'
+import { centerAppOrigin, centerBaseUrl } from '../../src/lib/center'
 import deploymentPins from '../../src/lib/defifa-deployments.json' with { type: 'json' }
 
 export const forkChainIds = (process.env.METALOG_FORK_CHAINS || '84532,8453').split(',').map(value => {
@@ -29,8 +30,11 @@ export async function unusedPort() {
 /** Only the freshly spawned loopback Anvil receives transaction or time-travel requests. */
 export async function startFork(chainId: number) {
   const chain = chainForId(chainId)
-  const rpc = process.env[`METALOG_FORK_RPC_${chainId}`] || chain.rpcUrls.default.http[0]
-  const source = createPublicClient({ chain, transport: http(rpc, { retryCount: 1, timeout: 20_000 }) })
+  const rpc = `${centerBaseUrl().replace(/\/+$/, '')}/v1/rpc/${chainId}`
+  const origin = centerAppOrigin()
+  const source = createPublicClient({ chain, transport: http(rpc, {
+    retryCount: 1, timeout: 20_000, fetchOptions: { headers: { Origin: origin } },
+  }) })
   if (await source.getChainId() !== chainId) throw new Error('The fork source returned a different network.')
   const requestedBlock = process.env[`METALOG_FORK_BLOCK_${chainId}`]
   const blockNumber = requestedBlock ? BigInt(requestedBlock) : await source.getBlockNumber()
@@ -41,6 +45,7 @@ export async function startFork(chainId: number) {
   const processHandle = spawn(process.env.ANVIL_BIN || 'anvil', [
     '--quiet', '--host', '127.0.0.1', '--port', new URL(url).port,
     '--chain-id', String(chainId), '--fork-url', rpc, '--fork-block-number', String(blockNumber),
+    '--fork-header', `Origin: ${origin}`,
     '--accounts', '5', '--balance', '10000', '--no-storage-caching',
     '--derivation-path', "m/44'/60'/21600'/0/",
     '--retries', '2', '--timeout', '20000',
@@ -59,7 +64,10 @@ export async function startFork(chainId: number) {
     await Promise.race([exited, pause(3_000)])
     if (processHandle.exitCode === null && processHandle.signalCode === null) processHandle.kill('SIGKILL')
   }
-  const client = createPublicClient({ chain, transport: http(url, { retryCount: 0, timeout: 60_000 }), cacheTime: 0 }) as PublicClient
+  // Cold fork execution fetches many slots serially. This local-only budget
+  // leaves individual Center reads bounded at 20s and does not skip simulation.
+  // This client only reads/simulates; one transient read retry never resends a write.
+  const client = createPublicClient({ chain, transport: http(url, { retryCount: 1, timeout: 180_000 }), cacheTime: 0 }) as PublicClient
   const control = createTestClient({ chain, mode: 'anvil', transport: http(url), cacheTime: 0 })
   try {
     let ready = false

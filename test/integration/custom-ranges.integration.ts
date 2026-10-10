@@ -1,7 +1,7 @@
 import { expect, it, vi } from 'vitest'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { parseEventLogs, zeroAddress, type Address, type Hex, type TransactionReceipt } from 'viem'
+import { decodeFunctionData, parseEventLogs, zeroAddress, type Address, type Hex, type TransactionReceipt } from 'viem'
 import { allocatePositions } from '../../src/domain/allocation'
 import { validateCoefficients } from '../../src/domain/distribution'
 import { validateMarket } from '../../src/domain/market'
@@ -11,6 +11,7 @@ import {
 import {
   executeTransaction, readPendingTransaction, recoverTransaction, type TransactionRuntime,
 } from '../../src/lib/transaction'
+import { loadMarketMetadata } from '../../src/lib/market-metadata'
 import { startFork } from './fork'
 
 it('creates unequal ranges and recovers their curve-derived mint without sending twice on a Base Sepolia fork', async () => {
@@ -48,7 +49,12 @@ it('creates unequal ranges and recovers their curve-derived mint without sending
         return fork.wallet(account).sendTransaction(request)
       },
     }
-    const creation = await executeTransaction(await prepareCreateMarket(definition, chainId, account), runtime)
+    const preparedCreation = await prepareCreateMarket(definition, chainId, account)
+    const launch = decodeFunctionData({ abi: DEFIFA_ABI.DefifaDeployer, data: preparedCreation.data }).args![0] as { projectUri: string }
+    expect(launch.projectUri).toMatch(/^ipfs:\/\/Qm/)
+    const published = await loadMarketMetadata(launch.projectUri)
+    const creation = await executeTransaction(preparedCreation, runtime)
+    console.info('Local IPFS market created', { chainId, projectUri: published.projectUri, transactionHash: creation.transactionHash })
     expect(creation.status).toBe('success')
     expect(readPendingTransaction(runtime.storage)).toBeNull()
     sent.push({ title: 'Create custom ranges', hash: creation.transactionHash, blockNumber: String(creation.blockNumber) })
@@ -80,6 +86,7 @@ it('creates unequal ranges and recovers their curve-derived mint without sending
     expect(allocation.quantities).toEqual([2, 36, 15, 42, 5])
     const request = await prepareEntry(market, allocation, account, coefficients)
     expect(request.value).toBe(100n * BigInt(definition.unitPriceWei))
+    console.info('Local 100-NFT entry prepared', { chainId, projectId: market.projectId })
     const send = runtime.send
     let hash: Hex | undefined
     runtime.send = vi.fn(async call => {
@@ -95,12 +102,19 @@ it('creates unequal ranges and recovers their curve-derived mint without sending
     }
     const recovered = await recoverTransaction(runtime, hash, restored)
     expect(recovered.status).toBe('success')
+    console.info('Local 100-NFT entry recovered', { chainId, transactionHash: recovered.transactionHash })
     expect(runtime.send).toHaveBeenCalledTimes(1)
     expect(readPendingTransaction(runtime.storage)).toBeNull()
     const mints = parseEventLogs({ abi: DEFIFA_ABI.DefifaHook, eventName: 'Transfer', logs: recovered.logs })
       .filter(log => log.address.toLowerCase() === market.hook.toLowerCase()
         && (log.args as { from: Address }).from === zeroAddress)
     expect(mints).toHaveLength(100)
+    // Native NFT labels are the onchain tier names. Full tokenURI also loads
+    // two large onchain fonts; qualify that renderer on a full-node RPC.
+    for (const range of market.ranges) {
+      expect(await fork.client.readContract({ address: market.hook, abi: DEFIFA_ABI.DefifaHook,
+        functionName: 'tierNameOf', args: [BigInt(range.tierId)] })).toBe(range.label)
+    }
     market = await readMarket(chainId, market.projectId)
     expect(market.definition).toEqual(definition)
     expect(market.tiers.map(tier => tier.supply)).toEqual(['2', '36', '15', '42', '5'])
@@ -123,4 +137,6 @@ it('creates unequal ranges and recovers their curve-derived mint without sending
       }
     } finally { await fork.stop() }
   }
-})
+// Center-backed cold forks fetch every token's storage; keep the 100-NFT
+// qualification while bounding the whole test independently of production RPC.
+}, 600_000)
