@@ -200,6 +200,20 @@ describe('Defifa deployment binding', () => {
 })
 
 describe('Defifa launch calldata and fresh state', () => {
+  it('preserves optional names in the Center manifest and native NFT tier labels', async () => {
+    const named = validateMarket({ ...customDefinition, rangeNames: ['Rekt', 'FUD', 'Crab', 'Hopium', 'FOMO', 'Moon'] })
+    const tx = await prepareCreateMarket(named, chainId, account)
+    const launch = decodeFunctionData({ abi: DEFIFA_ABI.DefifaDeployer, data: tx.data }).args![0] as {
+      projectUri: string; tiers: { name: string }[];
+    }
+    expect(launch.tiers.map(tier => tier.name)).toEqual(marketRanges(named).map(range => range.label))
+    expect(launch.tiers[0].name).toBe('Rekt · < -5%')
+    expect(launch.tiers.at(-1)?.name).toBe('Moon · ≥ +3%')
+    expect(publishedByUri.get(launch.projectUri)?.definition).toEqual(named)
+    await tx.reverify!()
+    expect(publishMarketMetadata).toHaveBeenCalledTimes(1)
+  })
+
   it('publishes one IPFS project manifest and binds native tier names and zero hashes to launch and recovery', async () => {
     const tx = await prepareCreateMarket(customDefinition, chainId, account)
     const launch = decodeFunctionData({ abi: DEFIFA_ABI.DefifaDeployer, data: tx.data }).args![0] as {

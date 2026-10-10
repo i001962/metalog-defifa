@@ -11,6 +11,9 @@ import { rememberMarket } from '@/lib/recent-markets'
 import { useWallet } from '@/providers/Providers'
 import { useTransactions } from '@/providers/Transactions'
 import { RangePreview } from './RangePreview'
+import { RANGE_PRESETS, buildRangePreset, type RangePresetId } from '@/domain/range-presets'
+import { namedRanges, resizeRangeBoundaries, validateCustomRangeCount } from '@/domain/ranges'
+import { ASSET_PRESETS, WINDOW_PRESETS, buildObservationPreset } from '@/domain/observation-presets'
 
 const dateInput = (seconds: number) => new Date(seconds * 1000).toISOString().slice(0, 16)
 const seconds = (value: string) => Math.floor(Date.parse(`${value}Z`) / 1000)
@@ -33,6 +36,16 @@ export function CreateMarket({ now }: { now: number }) {
   const [fixedBoundaries, setFixedBoundaries] = useState<number[]>([])
   const [editFailure, setEditFailure] = useState<{ index: number; message: string } | null>(null)
   const [boundaries, setBoundaries] = useState<string[] | null>(null)
+  const [rangeNames, setRangeNames] = useState<string[] | undefined>()
+  const [advancedCount, setAdvancedCount] = useState(String(DEFAULT_RANGE_COUNT))
+  const [rangePreset, setRangePreset] = useState<RangePresetId | 'custom'>('custom')
+  const [presetWidth, setPresetWidth] = useState('1')
+  const [presetMean, setPresetMean] = useState('0')
+  const [presetSigma, setPresetSigma] = useState('2')
+  const [presetError, setPresetError] = useState('')
+  const [assetPreset, setAssetPreset] = useState('custom')
+  const [timePreset, setTimePreset] = useState('custom')
+  const [observationError, setObservationError] = useState('')
   const [lastRanges, setLastRanges] = useState<Partial<Record<RangeMode, RangeBin[]>>>(() => ({ simple: createRanges() }))
   const [price, setPrice] = useState('0.000001')
   const [chainId, setChainId] = useState(8453)
@@ -47,11 +60,11 @@ export function CreateMarket({ now }: { now: number }) {
     try {
       if (rangeMode === 'advanced') {
         const rangeBoundaries = parseRangeBoundaries(boundaries ?? [])
-        return { configuration: { rangeBoundaries }, ranges: createCustomRanges(rangeBoundaries), error: null }
+        return { configuration: { rangeBoundaries, ...(rangeNames ? { rangeNames } : {}) }, ranges: namedRanges(createCustomRanges(rangeBoundaries), rangeNames), error: null }
       }
       return { configuration: { rangeCount: Number(rangeCount), rangeWidth: Number(rangeWidth) }, ranges: createRanges(Number(rangeCount), Number(rangeWidth)), error: null }
     } catch (cause) { return { configuration: null, ranges: null, error: cause instanceof Error ? cause.message : 'Check the range boundaries.' } }
-  }, [rangeMode, boundaries, rangeCount, rangeWidth])
+  }, [rangeMode, boundaries, rangeCount, rangeWidth, rangeNames])
   if (rangeDraft.ranges && (rangeMode === 'simple' || !editFailure) && rangeDraft.ranges !== lastRanges[rangeMode]) setLastRanges({ ...lastRanges, [rangeMode]: rangeDraft.ranges })
   const ranges = (rangeMode === 'advanced' && editFailure ? null : rangeDraft.ranges) ?? lastRanges[rangeMode] ?? []
   const boundaryIssues = rangeMode === 'advanced' ? { ...rangeBoundaryIssues(boundaries ?? []), ...(editFailure ? { [editFailure.index]: editFailure.message } : {}) } : {}
@@ -74,6 +87,7 @@ export function CreateMarket({ now }: { now: number }) {
     if (next === 'advanced' && boundaries === null) {
       const seed = rangeDraft.ranges ?? lastRanges.simple!
       setBoundaries(seed.slice(0, -1).map(range => String(range.upper)))
+      setAdvancedCount(String(seed.length))
       setLastRanges(previous => ({ ...previous, advanced: seed }))
     }
     setSelectedRange(null)
@@ -81,6 +95,8 @@ export function CreateMarket({ now }: { now: number }) {
     setRangeMode(next)
   }
   function editBoundary(index: number, text: string, anchors = fixedBoundaries) {
+    setRangePreset('custom')
+    setPresetError('')
     const next = boundaries!.map((item, position) => position === index ? text : item)
     setBoundaries(next)
     try {
@@ -109,6 +125,10 @@ export function CreateMarket({ now }: { now: number }) {
   }
   function removeBoundary(index: number) {
     const next = boundaries!.filter((_, position) => position !== index)
+    setAdvancedCount(String(next.length + 1))
+    setRangeNames(undefined)
+    setRangePreset('custom')
+    setPresetError('')
     const fixed = fixedBoundaries.filter(item => item !== index).map(item => item > index ? item - 1 : item)
     setFixedBoundaries(fixed)
     setEditFailure(null)
@@ -118,6 +138,34 @@ export function CreateMarket({ now }: { now: number }) {
       const values = parseRangeBoundaries(next)
       setBoundaries(redistributeRangeBoundaries(values, 0, values[0], fixed).map(String))
     } catch { setBoundaries(next) }
+  }
+  function applyRanges() {
+    try {
+      if (rangePreset === 'equal-probability' && (!presetMean.trim() || !presetSigma.trim())) throw new Error('Enter a reference mean and standard deviation.')
+      const layout = rangePreset === 'custom'
+        ? { boundaries: resizeRangeBoundaries(parseRangeBoundaries(boundaries!), validateCustomRangeCount(Number(advancedCount))) }
+        : buildRangePreset(rangePreset, { count: Number(advancedCount), width: Number(presetWidth), mean: Number(presetMean), sigma: Number(presetSigma) })
+      setBoundaries(layout.boundaries.map(String))
+      setRangeNames('names' in layout ? layout.names : undefined)
+      setAdvancedCount(String(layout.boundaries.length + 1))
+      setFixedBoundaries([])
+      setEditFailure(null)
+      setSelectedBoundary(null)
+      setSelectedRange(null)
+      setPresetError('')
+    } catch (cause) { setPresetError(cause instanceof Error ? cause.message : 'Check the preset values.') }
+  }
+  function applyObservation() {
+    try {
+      const preset = buildObservationPreset(assetPreset, timePreset)
+      const starts = seconds(close)
+      if (!Number.isFinite(starts)) throw new Error('Set an observation start before applying this preset.')
+      setEnd(dateInput(starts + preset.durationSeconds))
+      setPrompt(preset.prompt)
+      setSource(preset.source)
+      setRule(preset.resolutionRule)
+      setObservationError('')
+    } catch (cause) { setObservationError(cause instanceof Error ? cause.message : 'Check the observation start.') }
   }
   function applyShortSchedule() {
     if (!isTestnet) return
@@ -149,6 +197,11 @@ export function CreateMarket({ now }: { now: number }) {
   }
   return <form className="form-narrow" onSubmit={create}>
     <h1>Create market</h1>
+    <div className="forecast-moments">
+      <label className="field"><span>Asset preset</span><select className="network-select" value={assetPreset} onChange={event => setAssetPreset(event.target.value)}><option value="custom">Custom</option>{ASSET_PRESETS.map(preset => <option key={preset.id} value={preset.id}>{preset.label}</option>)}</select></label>
+      <label className="field"><span>Time preset</span><select className="network-select" value={timePreset} onChange={event => setTimePreset(event.target.value)}><option value="custom">Custom</option>{WINDOW_PRESETS.map(preset => <option key={preset.id} value={preset.id}>{preset.label}</option>)}</select></label>
+    </div>
+    <div className="field"><div><button type="button" disabled={assetPreset === 'custom' || timePreset === 'custom'} onClick={applyObservation}>Apply market preset</button></div><small>Fills the question, source, rule and observation end. All fields stay editable.</small>{observationError && <small className="error" role="alert">{observationError}</small>}</div>
     <label className="field"><span>Question</span><input placeholder="What will Bitcoin’s price change be over 24 hours?" maxLength={280} required value={prompt} onChange={event => setPrompt(event.target.value)} /></label>
     <div className="grid">
       <label className="field"><span>Entry opens (UTC)</span><input type="datetime-local" required value={open} onChange={event => setOpen(event.target.value)} /></label>
@@ -169,6 +222,21 @@ export function CreateMarket({ now }: { now: number }) {
       </>}
       <label className="field"><span>Price per position (ETH)</span><input inputMode="decimal" required value={price} onChange={event => setPrice(event.target.value)} /></label>
     </div>
+    {rangeMode === 'advanced' && <div className="range-presets">
+      <div className="forecast-moments">
+        <label className="field"><span>Range preset</span><select className="network-select" value={rangePreset} onChange={event => { setRangePreset(event.target.value as RangePresetId | 'custom'); setPresetError('') }}><option value="custom">Custom</option>{RANGE_PRESETS.map(preset => <option key={preset.id} value={preset.id}>{preset.label}</option>)}</select></label>
+        {!rangePreset.startsWith('kmac-') && <label className="field"><span>Ranges</span><input inputMode="numeric" value={advancedCount} onChange={event => { setAdvancedCount(event.target.value); setPresetError('') }} /></label>}
+        {rangePreset === 'equal-width' && <label className="field"><span>Range width (%)</span><input inputMode="decimal" value={presetWidth} onChange={event => setPresetWidth(event.target.value)} /></label>}
+        {rangePreset === 'equal-probability' && <>
+          <label className="field"><span>Reference mean (%)</span><input inputMode="decimal" value={presetMean} onChange={event => setPresetMean(event.target.value)} /></label>
+          <label className="field"><span>Reference SD (%)</span><input inputMode="decimal" value={presetSigma} onChange={event => setPresetSigma(event.target.value)} /></label>
+        </>}
+      </div>
+      <div className="field"><div><button type="button" onClick={applyRanges}>{rangePreset === 'custom' ? 'Apply range count' : 'Apply range preset'}</button></div>
+        <small>{rangePreset === 'custom' ? 'Redistributes edges evenly between the outer limits. Clears fixed edges and names.' : rangePreset === 'equal-probability' ? 'Equal probability under the reference Simple distribution, including both tails. Rounded to 4 decimals; this is not a market forecast.' : rangePreset === 'logarithmic' ? 'Concentrates ranges around 0% on a logarithmic −100% to +100% scale, with overflow tails.' : rangePreset.startsWith('kmac-') ? 'Seven named ranges from kmac. Time labels describe the suggested window; dates and observation rules stay separate.' : 'Equal-width ranges centered on 0%, with overflow tails.'} {rangePreset !== 'custom' && 'Applying replaces the current range layout.'}</small>
+        {presetError && <small className="error" role="alert">{presetError}</small>}
+      </div>
+    </div>}
     <div aria-live="polite">{rangeError && <p className="range-alert error" role="alert">{describeBoundaryIssue(rangeError)} Chart shows the last valid ranges.</p>}</div>
     <RangePreview ranges={ranges} stale={Boolean(rangeError)} invalidBoundaries={Object.keys(boundaryIssues).map(key => { const index = Number(key); const raw = boundaries?.[index]?.trim(); const value = raw ? Number(raw) : NaN; return { index, value: Number.isFinite(value) ? value : null } })} selected={selectedRange} boundary={selectedBoundary}
       onSelect={tier => { setSelectedRange(tier); setSelectedBoundary(null) }}
@@ -180,6 +248,7 @@ export function CreateMarket({ now }: { now: number }) {
         const tier = rangeIndex + 1
         return <div className="range-card" role="group" aria-label={`Range ${tier}`} key={tier} data-tier-id={tier} data-highlighted={selectedRange === tier}>
           <div className="row"><h3>Range {tier}</h3>{rangeIndex < boundaries.length && <button className="remove-boundary" type="button" aria-label={`Remove boundary ${tier}`} title={`Merge ranges ${tier} and ${tier + 1}`} disabled={boundaries.length <= MIN_RANGE_COUNT - 1} onClick={() => removeBoundary(rangeIndex)}>×</button>}</div>
+          {rangeNames && <label className="field range-name"><span>Name</span><input aria-label={`Range ${tier} name`} maxLength={40} value={rangeNames[rangeIndex]} onChange={event => { setRangeNames(previous => previous!.map((name, index) => index === rangeIndex ? event.target.value : name)); setRangePreset('custom') }} /></label>}
           <div className="range-card-edges">{(['lower', 'upper'] as const).map(edge => {
             const index = edge === 'lower' ? rangeIndex - 1 : rangeIndex
             const id = `range-${tier}-${edge}`
@@ -196,7 +265,7 @@ export function CreateMarket({ now }: { now: number }) {
           })}</div>
         </div>
       })}</div>
-      <button type="button" disabled={(boundaries?.length ?? 0) >= MAX_RANGE_COUNT - 1} onClick={() => { setFixedBoundaries(previous => [...new Set([...previous, boundaries!.length - 1])]); setBoundaries(previous => [...previous!, '']) }}>Add boundary</button>
+      <button type="button" disabled={(boundaries?.length ?? 0) >= MAX_RANGE_COUNT - 1} onClick={() => { setFixedBoundaries(previous => [...new Set([...previous, boundaries!.length - 1])]); setAdvancedCount(String(boundaries!.length + 2)); setRangeNames(undefined); setRangePreset('custom'); setBoundaries(previous => [...previous!, '']) }}>Add boundary</button>
     </> : <p className="hint">Equal-width ranges centered on 0%, plus one overflow range at each end.</p>}</div>
     <details><summary>View ranges</summary>{rangeError && <p className="hint">Showing the last valid ranges.</p>}<div className="table-wrap"><table><thead><tr><th>NFT tier</th><th>Range</th></tr></thead><tbody>{ranges.map(range => <tr key={range.tierId}><td>{range.tierId}</td><td>{range.label}</td></tr>)}</tbody></table></div></details>
     <div className="section">

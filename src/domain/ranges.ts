@@ -25,6 +25,32 @@ export function validateRangeCount(count: number): number {
   return count
 }
 
+/** Advanced layouts may have an even number of tiers. */
+export function validateCustomRangeCount(count: number): number {
+  if (!Number.isInteger(count) || count < MIN_RANGE_COUNT || count > MAX_RANGE_COUNT) {
+    throw new Error(`Choose ${MIN_RANGE_COUNT} to ${MAX_RANGE_COUNT} ranges.`)
+  }
+  return count
+}
+
+export function validateRangeNames(input: unknown, count: number): string[] | undefined {
+  if (input === undefined) return undefined
+  if (!Array.isArray(input) || input.length !== count) throw new Error('Provide one name for every range.')
+  const names = Array.from(input, name => {
+    if (typeof name !== 'string' || !name.trim() || name.trim().length > 40) {
+      throw new Error('Range names must contain 1 to 40 characters.')
+    }
+    return name.trim()
+  })
+  if (new Set(names).size !== names.length) throw new Error('Range names must be unique.')
+  return names
+}
+
+export function namedRanges(ranges: readonly RangeBin[], input?: unknown): RangeBin[] {
+  const names = validateRangeNames(input, ranges.length)
+  return names ? ranges.map((range, index) => ({ ...range, label: `${names[index]} · ${range.label}` })) : [...ranges]
+}
+
 export function validateRangeWidth(width: number): number {
   if (!Number.isFinite(width) || width < MIN_RANGE_WIDTH || width > MAX_RANGE_WIDTH
     || width !== Number(width.toFixed(2))) {
@@ -116,6 +142,10 @@ export function redistributeRangeBoundaries(current: readonly number[], index: n
   }
   boundaries[index] = validateRangeBoundary(value, index)
   const anchors = [...new Set([0, boundaries.length - 1, index, ...fixedIndices])].sort((a, b) => a - b)
+  return fillRangeBoundaries(boundaries, anchors)
+}
+
+function fillRangeBoundaries(boundaries: number[], anchors: number[]): number[] {
   for (let anchor = 1; anchor < anchors.length; anchor++) {
     const lowerIndex = anchors[anchor - 1], upperIndex = anchors[anchor]
     const lower = Math.round(boundaries[lowerIndex] * RANGE_SCALE)
@@ -135,12 +165,27 @@ export function redistributeRangeBoundaries(current: readonly number[], index: n
   return validateRangeBoundaries(boundaries)
 }
 
+/** Explicit rebuilding releases interior anchors while preserving the outer extent. */
+export function resizeRangeBoundaries(current: readonly number[], count: number): number[] {
+  const previous = validateRangeBoundaries(current)
+  const boundaries = new Array<number>(validateCustomRangeCount(count) - 1).fill(0)
+  boundaries[0] = previous[0]
+  boundaries[boundaries.length - 1] = previous[previous.length - 1]
+  return fillRangeBoundaries(boundaries, [0, boundaries.length - 1])
+}
+
 export function createCustomRanges(boundaries: readonly number[]): RangeBin[] {
   return rangesFromBoundaries(validateRangeBoundaries(boundaries))
 }
 
 export function createRanges(count = DEFAULT_RANGE_COUNT, width = DEFAULT_RANGE_WIDTH): RangeBin[] {
   validateRangeCount(count)
+  return createEqualWidthRanges(count, width)
+}
+
+/** Equal-width geometry shared by Simple and Advanced recipes. */
+export function createEqualWidthRanges(count: number, width: number): RangeBin[] {
+  validateCustomRangeCount(count)
   validateRangeWidth(width)
   const finiteCount = count - 2
   const boundaries = Array.from({ length: finiteCount + 1 }, (_, index) => {

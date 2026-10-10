@@ -1,0 +1,138 @@
+import { expect, test, type Page } from '@playwright/test'
+import { readFile } from 'node:fs/promises'
+
+async function downloadDefinition(page: Page) {
+  const event = page.waitForEvent('download')
+  await page.getByRole('button', { name: 'Download definition', exact: true }).click()
+  const file = await event
+  return JSON.parse(await readFile((await file.path())!, 'utf8'))
+}
+
+async function openMarket(page: Page) {
+  await page.goto('/create')
+  await page.getByLabel('Question', { exact: true }).fill('Custom price change?')
+  await page.getByLabel('Observation source', { exact: true }).fill('My exact reference source')
+}
+
+test('Advanced count and recipes rebuild explicitly and preserve Simple drafts', async ({ page }) => {
+  await openMarket(page)
+  await page.getByRole('button', { name: 'Advanced', exact: true }).click()
+  const count = page.getByLabel('Ranges', { exact: true })
+  const preset = page.getByRole('combobox', { name: 'Range preset', exact: true })
+  await count.fill('7')
+  await expect(page.locator('.range-card')).toHaveCount(21)
+  expect(await page.locator('form').evaluate(form => (form as HTMLFormElement).checkValidity())).toBe(true)
+  await page.getByRole('button', { name: 'Apply range count', exact: true }).click()
+  await expect(page.locator('.range-card')).toHaveCount(7)
+  expect((await downloadDefinition(page)).rangeBoundaries).toEqual([-9.5, -5.7, -1.9, 1.9, 5.7, 9.5])
+  await count.fill('6')
+  await page.getByRole('button', { name: 'Apply range count', exact: true }).click()
+  await expect(page.locator('.range-card')).toHaveCount(6)
+  await page.getByRole('button', { name: 'Simple', exact: true }).click()
+  await expect(count).toHaveValue('21')
+  await page.getByRole('button', { name: 'Advanced', exact: true }).click()
+  await expect(count).toHaveValue('6')
+  await preset.selectOption('equal-width')
+  await count.fill('4')
+  await page.getByLabel('Range width (%)', { exact: true }).fill('2')
+  await page.getByRole('button', { name: 'Apply range preset', exact: true }).click()
+  expect((await downloadDefinition(page)).rangeBoundaries).toEqual([-2, 0, 2])
+  await preset.selectOption('equal-probability')
+  await count.fill('7')
+  await page.getByRole('button', { name: 'Apply range preset', exact: true }).click()
+  const equal = (await downloadDefinition(page)).rangeBoundaries as number[]
+  const scale = 2 * Math.sqrt(3) / Math.PI
+  for (const [index, cutoff] of equal.entries()) expect(Math.abs(1 / (1 + Math.exp(-cutoff / scale)) - (index + 1) / 7)).toBeLessThan(0.00002)
+  await page.getByLabel('Reference mean (%)', { exact: true }).fill('')
+  await page.getByRole('button', { name: 'Apply range preset', exact: true }).click()
+  await expect(page.locator('.range-presets').getByRole('alert')).toContainText('reference mean')
+  expect((await downloadDefinition(page)).rangeBoundaries).toEqual(equal)
+  await preset.selectOption('logarithmic')
+  await count.fill('21')
+  await page.getByRole('button', { name: 'Apply range preset', exact: true }).click()
+  expect((await downloadDefinition(page)).rangeBoundaries[0]).toBe(-64.0779)
+  await preset.selectOption('custom')
+  await count.fill('62')
+  await page.getByRole('button', { name: 'Apply range count', exact: true }).click()
+  await expect(page.locator('.range-presets').getByRole('alert')).toContainText('3 to 61')
+  await expect(page.locator('.range-card')).toHaveCount(21)
+  expect(await page.locator('form').evaluate(form => (form as HTMLFormElement).checkValidity())).toBe(true)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+})
+
+test('kmac recipes preserve named ranges through editing and audited downloads', async ({ page, request }) => {
+  await openMarket(page)
+  await page.getByRole('button', { name: 'Advanced', exact: true }).click()
+  const names = ['Rekt', 'FUD', 'Copium', 'Crab', 'Hopium', 'FOMO', 'Moon']
+  for (const [id, boundaries] of [
+    ['kmac-15m', [-.25, -.15, -.05, .05, .15, .25]],
+    ['kmac-1h', [-.5, -.3, -.1, .1, .3, .5]],
+    ['kmac-1d', [-2.5, -1.5, -.5, .5, 1.5, 2.5]],
+  ] as const) {
+    await page.getByRole('combobox', { name: 'Range preset', exact: true }).selectOption(id)
+    await page.getByRole('button', { name: 'Apply range preset', exact: true }).click()
+    await expect(page.locator('.range-card')).toHaveCount(7)
+    const definition = await downloadDefinition(page)
+    expect(definition.rangeBoundaries).toEqual(boundaries)
+    expect(definition.rangeNames).toEqual(names)
+    const preview = await request.post('/api/preview?format=sipmath', { data: { market: definition, coefficients: [0, 1], positions: 100 } })
+    expect(preview.status()).toBe(200)
+    const library = await preview.json()
+    expect(library.metadata.source.market.rangeNames).toEqual(names)
+    expect(library.sips[1].metadata.ranges[0].label).toContain('Rekt · <')
+    expect(library.sips[1].metadata.ranges[6].label).toContain('Moon · ≥')
+  }
+  const diagram = page.getByRole('figure', { name: 'Range visualization' })
+  await diagram.getByRole('button', { name: /^Range 4: Crab/ }).focus()
+  await expect(page.locator('.range-card[data-highlighted="true"]')).toHaveCount(1)
+  await expect(page.locator('.range-card[data-tier-id="4"]')).toHaveAttribute('data-highlighted', 'true')
+  await page.getByLabel('Range 4 name', { exact: true }).fill('Flat')
+  await page.getByLabel('Range 4 upper (%)', { exact: true }).fill('0.6')
+  await expect(page.getByRole('combobox', { name: 'Range preset', exact: true })).toHaveValue('custom')
+  const custom = await downloadDefinition(page)
+  expect(custom.rangeNames[3]).toBe('Flat')
+  expect(custom.rangeBoundaries[3]).toBe(.6)
+  await page.getByLabel('Range 4 name', { exact: true }).fill('Rekt')
+  await expect(page.getByRole('button', { name: 'Download definition', exact: true })).toBeDisabled()
+  await expect(page.locator('.range-alert')).toContainText('unique')
+  await page.getByLabel('Range 4 name', { exact: true }).fill('Flat')
+  await expect(page.getByRole('button', { name: 'Download definition', exact: true })).toBeEnabled()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+})
+
+test('asset and time presets apply explicitly while all custom market fields remain editable', async ({ page }) => {
+  const failures: string[] = []
+  page.on('pageerror', error => failures.push(error.message))
+  await openMarket(page)
+  const question = page.getByLabel('Question', { exact: true })
+  const source = page.getByLabel('Observation source', { exact: true })
+  const start = page.getByLabel('Entry closes / observation starts (UTC)', { exact: true })
+  const end = page.getByLabel('Observation ends (UTC)', { exact: true })
+  const initialStart = await start.inputValue()
+  for (const [asset, window, duration] of [['BTC-USD', '15m', 900], ['ETH-USD', '1h', 3600], ['SOL-USD', '1d', 86400]] as const) {
+    const prior = await question.inputValue()
+    await page.getByRole('combobox', { name: 'Asset preset', exact: true }).selectOption(asset)
+    await page.getByRole('combobox', { name: 'Time preset', exact: true }).selectOption(window)
+    await expect(question).toHaveValue(prior)
+    await page.getByRole('button', { name: 'Apply market preset', exact: true }).click()
+    await expect(source).toHaveValue(new RegExp(`/products/${asset}/candles\\?granularity=60`))
+    await expect(start).toHaveValue(initialStart)
+    expect((Date.parse(`${await end.inputValue()}Z`) - Date.parse(`${initialStart}Z`)) / 1000).toBe(duration)
+    const definition = await downloadDefinition(page)
+    expect(definition.resolvesAt - definition.entryClosesAt).toBe(duration)
+    expect(definition.rangeCount).toBe(21)
+    expect(definition.resolutionRule).toContain('time field exactly equals')
+  }
+  await page.getByRole('combobox', { name: 'Asset preset', exact: true }).selectOption('custom')
+  await page.getByRole('combobox', { name: 'Time preset', exact: true }).selectOption('custom')
+  await expect(page.getByRole('button', { name: 'Apply market preset', exact: true })).toBeDisabled()
+  await question.fill('My custom question')
+  await source.fill('My own observation source')
+  await page.getByLabel(/^Observation rule/).fill('Use the exact source values at the two UTC times.')
+  const custom = await downloadDefinition(page)
+  expect(custom.prompt).toBe('My custom question')
+  expect(custom.source).toBe('My own observation source')
+  expect(custom.resolutionRule).toBe('Use the exact source values at the two UTC times.')
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  expect(failures).toEqual([])
+})

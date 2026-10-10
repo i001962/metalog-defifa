@@ -1,5 +1,5 @@
 import { getAddress, isAddress, zeroAddress, type Address } from 'viem'
-import { createCustomRanges, createRanges, validateRangeBoundaries, validateRangeCount, validateRangeWidth, type RangeBin } from './ranges'
+import { createCustomRanges, createRanges, namedRanges, validateRangeBoundaries, validateRangeCount, validateRangeNames, validateRangeWidth, type RangeBin } from './ranges'
 
 type RangeConfiguration =
   | { rangeCount: number; rangeWidth: number; rangeBoundaries?: never }
@@ -18,6 +18,7 @@ export type MarketDefinition = {
   resolvesAt: number
   unitPriceWei: string
   defaultAttestationDelegate?: Address
+  rangeNames?: string[]
 } & RangeConfiguration
 
 // This is below Defifa's uint48 limit and keeps every accepted timestamp representable by JS Date.
@@ -71,9 +72,10 @@ function rangeConfiguration(input: Record<string, unknown>): RangeConfiguration 
 /** Canonical tier geometry for launch, chain verification, previews and exports. */
 export function marketRanges(definition: MarketDefinition): RangeBin[] {
   const configuration = rangeConfiguration(definition)
-  return configuration.rangeBoundaries === undefined
+  const ranges = configuration.rangeBoundaries === undefined
     ? createRanges(configuration.rangeCount, configuration.rangeWidth)
     : createCustomRanges(configuration.rangeBoundaries)
+  return namedRanges(ranges, definition.rangeNames)
 }
 
 /** Omitting now validates historical metadata without treating an old market as malformed. */
@@ -102,6 +104,9 @@ export function validateMarket(input: unknown, now?: number): MarketDefinition {
     throw new Error('Position price must be a positive uint104 amount in wei.')
   }
   const defaultAttestationDelegate = parseDefaultDelegate(object.defaultAttestationDelegate)
+  const configuration = rangeConfiguration(object)
+  const rangeNames = validateRangeNames(object.rangeNames,
+    configuration.rangeBoundaries === undefined ? configuration.rangeCount : configuration.rangeBoundaries.length + 1)
   return {
     schemaVersion: 1,
     settlement: 'defifa-scorecard',
@@ -111,9 +116,10 @@ export function validateMarket(input: unknown, now?: number): MarketDefinition {
     entryOpensAt,
     entryClosesAt,
     resolvesAt,
-    ...rangeConfiguration(object),
+    ...configuration,
     unitPriceWei,
     ...(defaultAttestationDelegate ? { defaultAttestationDelegate } : {}),
+    ...(rangeNames ? { rangeNames } : {}),
   }
 }
 
