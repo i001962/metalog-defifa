@@ -229,7 +229,7 @@ export async function listMarkets(chainId: number): Promise<{ markets: MarketSna
   return { markets, errors }
 }
 
-function launchData(definition: MarketDefinition, chainId: number, published: PublishedMarketMetadata) {
+export function launchData(definition: MarketDefinition, chainId: number, published: PublishedMarketMetadata) {
   const d = deploymentForChain(chainId)
   return {
     name: definition.prompt, projectUri: published.projectUri, contractUri: published.contractUri,

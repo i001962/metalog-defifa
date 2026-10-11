@@ -4,11 +4,18 @@ import { parseEventLogs, zeroAddress, type Abi } from 'viem'
 import type { LifecycleSnapshot } from '../../src/lib/defifa-lifecycle'
 import DEFIFA_ABI from '../../src/lib/defifa-abi.json' with { type: 'json' }
 import { injectForkWallet, startBrowserFork } from './lifecycle.harness'
+import { nativeCreationRequest } from '../fixtures/transaction-requests'
 
 test('the built website creates, enters, refunds, transfers, settles and claims on the native EVM', async ({ page }, testInfo) => {
   const environment = await startBrowserFork()
   const { fork, baseURL } = environment
   const wallet = await injectForkWallet(page, fork)
+  const legacy = JSON.stringify({ ...nativeCreationRequest, value: nativeCreationRequest.value.toString(),
+    version: 1, id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', createdAt: 1, afterBlock: '1', phase: 'unknown',
+    account: fork.accounts[0], title: 'Earlier unresolved creation', details: [] })
+  await page.addInitScript(record => {
+    if (!localStorage.getItem('metalog:transaction:v1')) localStorage.setItem('metalog:transaction:v1', record)
+  }, legacy)
   const pageErrors: string[] = []
   const evidence: { action: string; hash: string; blockNumber: string }[] = []
   page.on('pageerror', error => pageErrors.push(error.message))
@@ -29,10 +36,11 @@ test('the built website creates, enters, refunds, transfers, settles and claims 
     await dialog.getByRole('button', { name: 'Continue to wallet', exact: true }).click()
     await expect(dialog).toBeHidden()
     await expect.poll(() => wallet.transactions.length, { timeout: 90_000 }).toBe(before + 1)
-    await expect(page.getByRole('complementary', { name: 'Transaction status' }).getByText('Transaction confirmed.', { exact: true })).toBeVisible({ timeout: 90_000 })
     const hash = wallet.transactions[before]
-    const receipt = await fork.client.getTransactionReceipt({ hash })
+    const receipt = await fork.client.waitForTransactionReceipt({ hash, timeout: 90_000 })
     expect(receipt.status).toBe('success')
+    await expect(page.getByRole('complementary', { name: 'Transaction status' }).getByText('Submission is unconfirmed. Check the original transaction before sending again.', { exact: true })).toBeVisible({ timeout: 90_000 })
+    expect(await page.evaluate(() => localStorage.getItem('metalog:transaction:v1'))).toBe(legacy)
     evidence.push({ action, hash, blockNumber: String(receipt.blockNumber) })
     console.info(`${action}: ${hash} at local block ${receipt.blockNumber}`)
     return receipt
@@ -63,7 +71,7 @@ test('the built website creates, enters, refunds, transfers, settles and claims 
     await page.getByLabel('Ranges', { exact: true }).fill('3')
     await page.getByLabel('Price per position (ETH)', { exact: true }).fill('0.0001')
     await page.getByRole('combobox', { name: 'Network', exact: true }).selectOption('84532')
-    const receipt = await transact(page.getByRole('button', { name: 'Review market', exact: true }), 'Create market')
+    const receipt = await transact(page.getByRole('button', { name: 'Review new market', exact: true }), 'Create market')
     await expect(page).toHaveURL(/\/markets\/84532\/\d+$/)
     await expect(page.getByRole('heading', { level: 1, name: question, exact: true })).toBeVisible()
     expect(receipt.logs.length).toBeGreaterThan(0)
@@ -185,7 +193,7 @@ test('the built website creates, enters, refunds, transfers, settles and claims 
     expect(pageErrors).toEqual([])
   } finally {
     const path = testInfo.outputPath('local-fork-evidence.json')
-    await writeFile(path, JSON.stringify({ chainId: fork.chainId, fork: fork.anchor, transactions: evidence, pageErrors, serverLog: environment.diagnostic() }, null, 2))
+    await writeFile(path, JSON.stringify({ chainId: fork.chainId, fork: fork.anchor, metadataPins: wallet.metadataPins, transactions: evidence, pageErrors, serverLog: environment.diagnostic() }, null, 2))
     await testInfo.attach('local-fork-evidence', { path, contentType: 'application/json' })
     await environment.stop()
   }

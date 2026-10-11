@@ -36,7 +36,7 @@ export function MarketLifecycle({ lifecycle, current, loading, error, onRefresh,
   const tokenIds = Object.keys(selected).sort((a, b) => BigInt(a) < BigInt(b) ? -1 : 1)
   const tierIds = [...new Set(Object.values(selected))].sort((a, b) => a - b)
   const matchingWallet = !!address && lifecycle.account?.toLowerCase() === walletKey
-  const busy = preparing || transactions.busy || !!transactions.pending
+  const busy = preparing || transactions.busy || transactions.hasPendingForMarket(market)
   const canAct = current && matchingWallet && !isSigna && !busy
   const explorer = chainForId(market.chainId).blockExplorers.default.url
   const scoreDraft = useMemo(() => {
@@ -83,7 +83,7 @@ export function MarketLifecycle({ lifecycle, current, loading, error, onRefresh,
     try {
       const { prepareLifecycleAction } = await import('@/lib/defifa-lifecycle')
       const prepared = await prepareLifecycleAction(market, action, address)
-      const receipt = await transactions.execute(prepared)
+      const receipt = await transactions.executeMarket(prepared, market)
       if (receipt) {
         const removed = action.kind === 'transfer' ? [action.tokenId] : action.kind === 'cash-out' ? action.tokenIds : []
         if (removed.length) setSelections(previous => {

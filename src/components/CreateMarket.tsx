@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { parseEther } from 'viem'
 import { parseDefaultDelegate, validateMarket } from '@/domain/market'
@@ -57,6 +57,8 @@ export function CreateMarket({ now }: { now: number }) {
   const [chainId, setChainId] = useState(8453)
   const isTestnet = SUPPORTED_CHAINS.some(chain => chain.id === chainId && 'testnet' in chain && chain.testnet)
   const [busy, setBusy] = useState(false)
+  const [attemptId, setAttemptId] = useState<string | null>(null)
+  const creating = useRef(false)
   const [error, setError] = useState('')
   const [showValidation, setShowValidation] = useState(false)
   const router = useRouter()
@@ -186,17 +188,21 @@ export function CreateMarket({ now }: { now: number }) {
   }
   async function create(event: React.FormEvent) {
     event.preventDefault()
+    if (creating.current || transactions.busy || !transactions.canCreateNewMarket || (attemptId && transactions.isCreationPending(attemptId))) return
     setShowValidation(true)
     setError('')
     if (!draft.definition) return
     if (!wallet.address) { wallet.connect(); return }
     if (wallet.isSigna) { wallet.connect({ externalOnly: true }); return }
+    creating.current = true
     setBusy(true)
     setError('')
     try {
+      const currentAttempt = attemptId ?? crypto.randomUUID()
+      setAttemptId(currentAttempt)
       const { prepareCreateMarket, createdMarketId } = await import('@/lib/defifa')
       const prepared = await prepareCreateMarket(draft.definition, chainId, wallet.address)
-      const receipt = await transactions.execute(prepared)
+      const receipt = await transactions.executeNewMarket(prepared, currentAttempt)
       if (receipt) {
         const projectId = createdMarketId(receipt)
         if (!projectId) throw new Error('The transaction was confirmed, but its game ID could not be read. Check the transaction before creating again.')
@@ -204,7 +210,7 @@ export function CreateMarket({ now }: { now: number }) {
         router.push(`/markets/${chainId}/${projectId}`)
       }
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Market could not be prepared.') }
-    finally { setBusy(false) }
+    finally { creating.current = false; setBusy(false) }
   }
   return <form className="form-narrow" onSubmit={create} onChange={() => setError('')} onInvalid={event => {
     // Native constraints run before onSubmit, including required date inputs.
@@ -292,10 +298,11 @@ export function CreateMarket({ now }: { now: number }) {
       {isTestnet && <div className="field"><div><button type="button" onClick={applyShortSchedule}>Use short test schedule</button></div><small>{testSchedule ? <>Opens in 2–3 minutes, with 10 minutes for entry and {(testSchedule.resolvesAt - testSchedule.entryClosesAt) / 60} minutes for observation.</> : 'Preserves the observation duration entered above.'} Results still take at least 1 day to settle.</small>{scheduleError && <small className="error" role="alert">{scheduleError}</small>}</div>}
       <p className="hint">Payouts follow the ratified result. Entry can be refunded while minting is open.</p>
       <div className="actions">
-        <button type="submit" className="primary" disabled={busy || transactions.busy || Boolean(transactions.pending) || Boolean(rangeError || delegateDraft.error)}>{busy ? 'Preparing market…' : !wallet.address ? 'Connect to create' : wallet.isSigna ? 'Use external wallet to create' : 'Review market'}</button>
+        <button type="submit" className="primary" disabled={busy || transactions.busy || !transactions.canCreateNewMarket || (attemptId !== null && transactions.isCreationPending(attemptId)) || Boolean(rangeError || delegateDraft.error)}>{busy ? 'Preparing market…' : !wallet.address ? 'Connect to create' : wallet.isSigna ? 'Use external wallet to create' : transactions.pending ? 'Review new market' : 'Review market'}</button>
         <button type="button" disabled={!draft.definition} onClick={() => draft.definition && downloadJson(draft.definition, 'metalog-market.json')}>Download definition</button>
       </div>
-      {transactions.pending && <p className="hint" role="status">Check the pending transaction below before creating another market.</p>}
+      {transactions.pending && <p className="hint" role="status">{transactions.canCreateNewMarket ? 'A previous transaction is still unresolved. This creates a separate market and keeps the earlier transaction available to check.' : 'An earlier transaction could not be identified. Check it before creating another market.'} <a href="#transaction-status">View pending transaction</a></p>}
+      {attemptId && transactions.isCreationPending(attemptId) && <button type="button" disabled={busy || transactions.busy} onClick={() => setAttemptId(null)}>Create another market</button>}
       {(error || (showValidation && draft.error && draft.error !== rangeError && draft.error !== delegateDraft.error)) && <p className="error" role="alert" style={{ marginTop: 14 }}>{error || draft.error}</p>}
     </div>
   </form>

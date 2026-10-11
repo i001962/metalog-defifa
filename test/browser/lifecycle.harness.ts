@@ -1,9 +1,12 @@
 import { spawn } from 'node:child_process'
 import { once } from 'node:events'
+import { createHash } from 'node:crypto'
+import { createServer } from 'vite'
 import { setTimeout as pause } from 'node:timers/promises'
 import type { Page } from '@playwright/test'
-import type { Address, Hex } from 'viem'
+import { encodeFunctionData, type Address, type Hex } from 'viem'
 import { startFork, unusedPort, type LocalFork } from '../integration/fork'
+import { metadataCid, validateProjectMetadata } from '../../src/domain/market-metadata'
 
 export async function startBrowserFork() {
   const fork = await startFork(84532)
@@ -40,8 +43,22 @@ export async function startBrowserFork() {
 
 /** Test-only external provider. Every request, including writes, goes to this loopback fork. */
 export async function injectForkWallet(page: Page, fork: LocalFork) {
+  // Load application owners through the existing Vite TS/JSON/alias loader;
+  // Playwright's direct Node loader cannot consume framework JSON imports.
+  const loader = await createServer({ root: process.cwd(), configFile: false,
+    resolve: { alias: { '@': `${process.cwd()}/src` } }, server: { middlewareMode: true }, appType: 'custom' })
+  let owners: typeof import('../../src/lib/defifa')
+  let metadataOwner: typeof import('../../src/lib/market-metadata')
+  try {
+    owners = await loader.ssrLoadModule('/src/lib/defifa.ts') as typeof import('../../src/lib/defifa')
+    metadataOwner = await loader.ssrLoadModule('/src/lib/market-metadata.ts') as typeof import('../../src/lib/market-metadata')
+  } finally { await loader.close() }
+  const { DEFIFA_ABI, deploymentForChain, launchData } = owners
+  const { loadMarketMetadata } = metadataOwner
   const transactions: Hex[] = []
   const chainSwitches: number[] = []
+  const metadataPins: { cid: string; bodySha256: string; status: number; warmupGas: string; warmupMs: number }[] = []
+  let pinRequests = 0
   await page.exposeBinding('__metalogForkSwitch', (_source, chainId: number) => { chainSwitches.push(chainId) })
   await page.exposeBinding('__metalogForkRpc', async (_source, request: { method: string; params?: unknown[] }) => {
     if (request.method === 'eth_sendTransaction') {
@@ -59,6 +76,46 @@ export async function injectForkWallet(page: Page, fork: LocalFork) {
   // requests to the exact same fork as the injected wallet and server-side route.
   await page.route('**/*', async route => {
     const request = route.request()
+    const url = new URL(request.url())
+    if (url.origin === 'https://juicebox.center' && url.pathname === '/v1/pins/json') {
+      // The dynamic loopback browser is intentionally not on Center's pin allowlist.
+      // This opt-in qualification publishes only two explicit fixture manifests via
+      // the authorized site Origin; production metadata/readback code stays intact.
+      if (request.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: {
+        'access-control-allow-origin': '*', 'access-control-allow-methods': 'POST', 'access-control-allow-headers': 'content-type',
+      } })
+      if (request.method() !== 'POST' || ++pinRequests > 2) throw new Error('The fork qualification permits at most two metadata pins.')
+      const body = request.postData()!
+      const metadata = validateProjectMetadata(JSON.parse(body))
+      if (!['Browser qualification: percentage change?', 'Browser qualification: timeout and refund?'].includes(metadata.metalog.definition.prompt)) {
+        throw new Error('Only the explicit local-fork qualification metadata may be published.')
+      }
+      const response = await page.request.post(request.url(), { data: body, timeout: 60_000, maxRedirects: 0,
+        headers: { Origin: 'https://metalog.money', 'content-type': 'application/json' } })
+      if (response.ok()) {
+        const result = await response.json() as { uri: string }
+        if (new URL(fork.url).hostname !== '127.0.0.1') throw new Error('Gas warm-up must stay on the private loopback fork.')
+        // Cold Anvil fetches many upstream slots serially. Warm the exact existing
+        // launch owner after real IPFS readback, before the app's bounded estimate.
+        // This performs no send and never alters the production RPC timeout.
+        const started = Date.now()
+        let timer: ReturnType<typeof setTimeout> | undefined
+        const gas = await Promise.race([
+          (async () => {
+            const published = await loadMarketMetadata(result.uri)
+            const deployment = deploymentForChain(fork.chainId)
+            const value = await fork.client.readContract({ address: deployment.projects, abi: DEFIFA_ABI.JBProjects, functionName: 'creationFee' }) as bigint
+            const data = encodeFunctionData({ abi: DEFIFA_ABI.DefifaDeployer, functionName: 'launchGameWith',
+              args: [launchData(published.definition, fork.chainId, published)] })
+            return fork.client.estimateGas({ account: fork.accounts[0], to: deployment.deployer, data, value })
+          })(),
+          new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('The private fork gas warm-up exceeded 40 seconds.')), 40_000) }),
+        ]).finally(() => { if (timer) clearTimeout(timer) })
+        metadataPins.push({ cid: metadataCid(result.uri), bodySha256: createHash('sha256').update(body).digest('hex'),
+          status: response.status(), warmupGas: String(gas), warmupMs: Date.now() - started })
+      }
+      return route.fulfill({ response, headers: { 'content-type': 'application/json', 'access-control-allow-origin': '*' } })
+    }
     if (request.method() !== 'POST') return route.continue()
     let body: unknown
     try { body = request.postDataJSON() } catch { return route.continue() }
@@ -127,6 +184,7 @@ export async function injectForkWallet(page: Page, fork: LocalFork) {
   return {
     transactions,
     chainSwitches,
+    metadataPins,
     select: (account: Address) => page.evaluate(address => {
       (window as typeof window & { __metalogForkWallet: { select: (account: string) => void } }).__metalogForkWallet.select(address)
     }, account),

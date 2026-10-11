@@ -115,7 +115,7 @@ export function ForecastEditor({ definition, market, current = true, onSubmitted
     try {
       const { prepareEntry } = await import('@/lib/defifa')
       const prepared = await prepareEntry(market, model.preview.allocation, address, curve.coefficients)
-      const receipt = await transactions.execute(prepared)
+      const receipt = await transactions.executeMarket(prepared, market)
       if (receipt) onSubmitted?.()
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Entry could not be prepared.') }
     finally { setSubmitting(false) }
@@ -187,7 +187,7 @@ export function ForecastEditor({ definition, market, current = true, onSubmitted
       </div>
     </div>}
     <div className="actions">
-      {market && <button className="primary" disabled={!current || !model.preview || Boolean(closed) || submitting || transactions.busy || Boolean(transactions.pending)} onClick={submit}>
+      {market && <button className="primary" disabled={!current || !model.preview || Boolean(closed) || submitting || transactions.busy || transactions.hasPendingForMarket(market!)} onClick={submit}>
         {submitting ? 'Preparing entry…' : !address ? 'Connect to enter' : isSigna ? 'Use external wallet to enter' : 'Review entry'}
       </button>}
       <button disabled={!model.preview} onClick={() => model.preview && downloadJson(model.preview, 'metalog-forecast.json')}>Download draft</button>

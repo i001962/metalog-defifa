@@ -7,6 +7,7 @@ import {
   waitForTrackedReceipt,
 } from '@bananapus/nana-sdk-core/review'
 import { chainForId } from './wallet'
+import { classifyTransactionScope, isMarketTransactionScope, transactionMatchesMarketScope, type MarketTransactionScope } from './transaction-scope'
 
 /** A product adapter owns calldata, current-state checks and its receipt effects. */
 export type PreparedTransaction = {
@@ -32,9 +33,11 @@ export type PendingTransaction = Omit<PreparedTransaction, 'value' | 'reverify' 
   afterBlock: string
   phase: 'unknown' | 'pending'
   hash?: Hex
+  marketScope?: MarketTransactionScope
 }
 
 export const TRANSACTION_STORAGE_KEY = 'metalog:transaction:v1'
+export const TRANSACTION_JOURNAL_STORAGE_KEY = 'metalog:transaction-intents:v1'
 type Storage = Pick<globalThis.Storage, 'getItem' | 'setItem' | 'removeItem'>
 type Reader = Pick<PublicClient, 'chain' | 'request' | 'estimateGas' | 'getBlockNumber' | 'getBlock' | 'getTransaction' | 'getTransactionReceipt' | 'waitForTransactionReceipt'>
 export type WalletIdentity = { address?: Address; chainId?: number; connectorUid?: string; isSigna?: boolean }
@@ -61,13 +64,109 @@ export function readPendingTransaction(storage: Storage): PendingTransaction | n
     if (raw.length > 524_288) throw new Error()
     const value = JSON.parse(raw) as PendingTransaction
     validateCall(value)
-    if (value.version !== 1 || !/^[a-f0-9-]{36}$/.test(value.id) || !Number.isSafeInteger(value.createdAt) || value.createdAt <= 0 ||
+    if (value.version !== 1 || !/^[a-f0-9-]{36}$/.test(value.id) || !Number.isSafeInteger(value.createdAt) || value.createdAt <= 0 || !Number.isFinite(new Date(value.createdAt).getTime()) ||
       !uint(value.afterBlock) || !['unknown', 'pending'].includes(value.phase) ||
-      (value.hash !== undefined && !isHash(value.hash)) || (value.phase === 'pending' && !value.hash)) throw new Error()
+      (value.hash !== undefined && !isHash(value.hash)) || (value.phase === 'pending' && !value.hash) ||
+      (value.marketScope !== undefined && (!isMarketTransactionScope(value.marketScope) || !transactionMatchesMarketScope(value, value.marketScope)))) throw new Error()
     return value
   } catch {
     throw new Error('The saved transaction cannot be read. Preserve browser storage and check your wallet activity before sending again.')
   }
+}
+
+export type PendingAttempt = { attemptId: string | null; transaction: PendingTransaction }
+
+/** Completion of another intent never confirms the selected unresolved transaction. */
+export function selectedTransactionStatus(status: TransactionStatus, busy: boolean, selected: PendingTransaction | null): TransactionStatus {
+  return selected && !busy ? selected.phase : status
+}
+
+function readIntentJournal(storage: Storage): Record<string, PendingTransaction> {
+  const raw = storage.getItem(TRANSACTION_JOURNAL_STORAGE_KEY)
+  if (raw === null) return {}
+  try {
+    if (raw.length > 8_388_608) throw new Error()
+    const journal = JSON.parse(raw) as Record<string, PendingTransaction>
+    if (!journal || Array.isArray(journal) || typeof journal !== 'object' || Object.keys(journal).length > 100) throw new Error()
+    const ids = new Set<string>()
+    for (const [attemptId, transaction] of Object.entries(journal)) {
+      const checked = readPendingTransaction({ getItem: () => JSON.stringify(transaction), setItem() {}, removeItem() {} })
+      if (!checked || ids.has(checked.id)) throw new Error()
+      if (checked.marketScope) {
+        if (attemptId !== marketIntentId(checked.marketScope)) throw new Error()
+      } else if (!/^[a-f0-9-]{36}$/.test(attemptId) || classifyTransactionScope(checked).kind !== 'creation') throw new Error()
+      ids.add(checked.id)
+    }
+    return journal
+  } catch { throw new Error('The saved transaction attempts cannot be read. Preserve browser storage and check your wallet activity.') }
+}
+
+export function readPendingAttempts(storage: Storage): PendingAttempt[] {
+  const legacy = readPendingTransaction(storage)
+  return [...(legacy ? [{ attemptId: null, transaction: legacy }] : []),
+    ...Object.entries(readIntentJournal(storage)).map(([attemptId, transaction]) => ({ attemptId, transaction }))]
+}
+
+export const marketIntentId = (scope: MarketTransactionScope) => `market:${scope.chainId}:${scope.projectId}`
+
+/** Unknown legacy calls remain conservative; recognized intents are independently scoped. */
+export function pendingBlocksMarket(attempts: PendingAttempt[], market: MarketTransactionScope): boolean {
+  if (!isMarketTransactionScope(market)) return true
+  return attempts.some(({ transaction }) => {
+    const verifiedScope = classifyTransactionScope(transaction, market)
+    const scope = verifiedScope.kind === 'unknown' && transaction.marketScope
+      ? classifyTransactionScope(transaction, transaction.marketScope) : verifiedScope
+    return scope.kind === 'unknown' || scope.kind === 'market' && scope.chainId === market.chainId && scope.projectId === market.projectId
+  })
+}
+
+export function pendingBlocksNewCreation(attempts: PendingAttempt[]): boolean {
+  return attempts.some(({ transaction }) => classifyTransactionScope(transaction, transaction.marketScope).kind === 'unknown')
+}
+
+/** Scope only evidence storage; fresh review, wallet identity and receipt effects remain unchanged. */
+function intentStorage(storage: Storage, intentId: string, marketScope?: MarketTransactionScope): Storage {
+  readPendingAttempts(storage)
+  const save = (value: PendingTransaction | null) => {
+    const journal = readIntentJournal(storage)
+    if (value) journal[intentId] = value
+    else delete journal[intentId]
+    if (Object.keys(journal).length > 100) throw new Error('Too many unresolved transaction intents. Check an earlier transaction before submitting another.')
+    const raw = JSON.stringify(journal)
+    if (raw.length > 8_388_608) throw new Error('The transaction journal is full. Check an earlier transaction before submitting another.')
+    storage.setItem(TRANSACTION_JOURNAL_STORAGE_KEY, raw)
+    if (storage.getItem(TRANSACTION_JOURNAL_STORAGE_KEY) !== raw) throw new Error('The transaction intent could not be saved. Nothing more will be sent.')
+  }
+  return {
+    getItem: key => {
+      if (key !== TRANSACTION_STORAGE_KEY) return null
+      const transaction = readIntentJournal(storage)[intentId]
+      if (!transaction) return null
+      const engineRecord = { ...transaction }
+      delete engineRecord.marketScope
+      return JSON.stringify(engineRecord)
+    },
+    setItem: (key, raw) => {
+      if (key !== TRANSACTION_STORAGE_KEY) throw new Error('Unexpected transaction storage key.')
+      const parsed = readPendingTransaction({ getItem: () => raw, setItem() {}, removeItem() {} })
+      if (!parsed) throw new Error('The transaction intent is empty.')
+      if (marketScope ? !transactionMatchesMarketScope(parsed, marketScope) : classifyTransactionScope(parsed).kind !== 'creation') {
+        throw new Error(marketScope ? 'The transaction does not belong to this market.' : 'Independent creation attempts require a native market creation.')
+      }
+      save(marketScope ? { ...parsed, marketScope } : parsed)
+    },
+    removeItem: key => { if (key !== TRANSACTION_STORAGE_KEY) throw new Error('Unexpected transaction storage key.'); save(null) },
+  }
+}
+
+export function creationAttemptStorage(storage: Storage, attemptId: string): Storage {
+  if (!/^[a-f0-9-]{36}$/.test(attemptId)) throw new Error('The creation attempt ID is invalid.')
+  return intentStorage(storage, attemptId)
+}
+
+export function marketAttemptStorage(storage: Storage, scope: MarketTransactionScope): Storage {
+  if (!isMarketTransactionScope(scope)) throw new Error('The market transaction scope is invalid.')
+  return intentStorage(storage, marketIntentId(scope), scope)
 }
 
 function writePending(storage: Storage, value: PendingTransaction, previousId: string | null) {
@@ -153,7 +252,7 @@ export async function recoverTransaction(runtime: Pick<TransactionRuntime, 'stor
 
 /** The SDK owns the review/simulate/send boundary; this adapter owns only Metalog's saved evidence. */
 export async function executeTransaction(input: PreparedTransaction, runtime: TransactionRuntime) {
-  if (readPendingTransaction(runtime.storage)) throw new Error('Check the pending transaction before sending another.')
+  if (readPendingAttempts(runtime.storage).length) throw new Error('Check the pending transaction before sending another.')
   const request = Object.freeze({ ...input, details: input.details.map(detail => Object.freeze({ ...detail })) })
   validateCall({ ...request, value: request.value.toString() })
   if (!request.verifyReceipt) throw new Error('The transaction effect verifier is unavailable. Nothing was sent.')
