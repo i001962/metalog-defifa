@@ -74,8 +74,8 @@ export function MarketView({ chainId, projectId }: { chainId: number; projectId:
       <p className="hint" style={{ marginTop: 16 }}>Supply at block {market.blockNumber}. Refunds and redemptions change circulating supply.</p>
     </section>
     <section><h2>Settlement</h2>
-      <p className="muted">Payouts follow the ratified scorecard.</p>
-      {market.ratifiedScorecardId && <p>Ratified scorecard: <code>{market.ratifiedScorecardId}</code></p>}
+      <p className="muted">Payouts follow the ratified result.</p>
+      {market.ratifiedScorecardId && <p>Ratified result: <code>{market.ratifiedScorecardId}</code></p>}
       {market.ratifiedWeights && data.ratifiedPayoutShares && <div className="table-wrap"><table><thead><tr><th>Range</th><th>Ratified payout share</th></tr></thead><tbody>
         {market.ratifiedWeights.map((weight, index) => <tr key={weight.tierId}><td>{market.ranges.find(range => range.tierId === weight.tierId)?.label}</td><td>{(data.ratifiedPayoutShares![index] * 100).toFixed(2)}%</td></tr>)}
       </tbody></table></div>}

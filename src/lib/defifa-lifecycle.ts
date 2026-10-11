@@ -93,19 +93,19 @@ function uint(value: string, name: string, zero = true): bigint {
 
 function nativeWeights(market: MarketSnapshot, weights: TierWeight[]): NativeWeight[] {
   if (!Array.isArray(weights) || !weights.length || weights.length > market.ranges.length) {
-    throw new Error('Provide a scorecard for this market’s ranges.')
+    throw new Error('Provide a result for this market’s ranges.')
   }
   let previous = 0
   const result = weights.map(item => {
     if (!Number.isSafeInteger(item.tierId) || item.tierId <= previous
       || !market.ranges.some(range => range.tierId === item.tierId)) {
-      throw new Error('Scorecard ranges must be unique and in ascending order.')
+      throw new Error('Result ranges must be unique and in ascending order.')
     }
     previous = item.tierId
-    return { id: BigInt(item.tierId), cashOutWeight: uint(item.weight, 'scorecard weight') }
+    return { id: BigInt(item.tierId), cashOutWeight: uint(item.weight, 'result weight') }
   })
   if (result.reduce((sum, item) => sum + item.cashOutWeight, 0n) !== SCORECARD_WEIGHT_TOTAL) {
-    throw new Error('The scorecard must assign exactly 100% of the pot.')
+    throw new Error('The result must assign exactly 100% of the pot.')
   }
   return result
 }
@@ -200,7 +200,7 @@ async function firstScoringBlock(client: PublicClient, market: MarketSnapshot): 
   try { return await firstBlockAtTimestamp(client, market, market.definition.entryClosesAt) }
   catch (error) {
     if (error instanceof Error && error.message === 'The history range could not be resolved within its read limit.') {
-      throw new Error('The scorecard history range could not be resolved within its read limit.')
+      throw new Error('The results history range could not be resolved within its read limit.')
     }
     throw error
   }
@@ -211,12 +211,12 @@ async function readScorecards(
 ): Promise<{ scorecards: ScorecardSnapshot[]; next: string | null; complete: boolean }> {
   if (market.phase < 3) return { scorecards: [], next: null, complete: true }
   const head = BigInt(market.blockNumber)
-  const end = cursor === undefined ? head : uint(cursor, 'scorecard cursor')
-  if (end > head) throw new Error('The scorecard cursor is outside this snapshot.')
+  const end = cursor === undefined ? head : uint(cursor, 'results cursor')
+  if (end > head) throw new Error('The results cursor is outside this snapshot.')
   const first = await firstScoringBlock(client, market)
   if (end < first) return { scorecards: [], next: null, complete: true }
   const event = getAbiItem({ abi: DEFIFA_ABI.DefifaGovernor, name: 'ScorecardSubmitted' })
-  if (!event || event.type !== 'event') throw new Error('The scorecard event ABI is unavailable.')
+  if (!event || event.type !== 'event') throw new Error('The result event ABI is unavailable.')
   // Scan indexed game history in Center-compatible windows. Reduce only an explicitly
   // unsupported log range/result size; transport outages and rate limits remain errors. Accepted chunks
   // are continued automatically, bounded by 16 RPC calls and 100 proposals per page.
@@ -231,7 +231,7 @@ async function readScorecards(
       if (collected.length + result.length > MAX_SCORECARDS_PER_PAGE) {
         if (span === 1n) {
           if (collected.length) break
-          throw new Error('A single block exceeds the 100-scorecard read limit.')
+          throw new Error('A single block exceeds the 100-result read limit.')
         }
         span = span > 1n ? span / 2n : 1n
         continue
@@ -245,7 +245,7 @@ async function readScorecards(
       span = span > 1n ? span / 2n : 1n
     }
   }
-  if (!madeProgress) throw new Error('Scorecard history could not be read within 16 Center requests. Try again later.')
+  if (!madeProgress) throw new Error('Results history could not be read within 16 Center requests. Try again later.')
   const logs = parseEventLogs({ abi: DEFIFA_ABI.DefifaGovernor, logs: collected, eventName: 'ScorecardSubmitted', strict: true })
     .sort((a, b) => a.blockNumber === b.blockNumber ? a.logIndex - b.logIndex : a.blockNumber < b.blockNumber ? -1 : 1)
   const read = readAt(client, market)
@@ -253,7 +253,7 @@ async function readScorecards(
   const timestampByBlock = new Map<string, Promise<number>>()
   const cards = await Promise.all(logs.map(async log => {
     const args = log.args as unknown as SubmittedArgs
-    if (args.gameId !== id || log.blockNumber === null || log.removed) throw new Error('The scorecard log does not match this snapshot.')
+    if (args.gameId !== id || log.blockNumber === null || log.removed) throw new Error('The result log does not match this snapshot.')
     const blockKey = log.blockNumber.toString()
     if (!timestampByBlock.has(blockKey)) timestampByBlock.set(blockKey, client.getBlock({ blockNumber: log.blockNumber }).then(block => Number(block.timestamp)))
     const submittedAt = await timestampByBlock.get(blockKey)!
@@ -264,7 +264,7 @@ async function readScorecards(
       account ? read<boolean>(market.governor, 'DefifaGovernor', 'hasAttestedTo', [id, args.scorecardId, account]) : false,
       account ? read<bigint>(market.governor, 'DefifaGovernor', 'getBWAAttestationWeight', [id, args.scorecardId, account, submittedAt - 1]) : null,
     ])
-    if (!STATE_NAMES[Number(state)]) throw new Error('The governor returned an unknown scorecard state.')
+    if (!STATE_NAMES[Number(state)]) throw new Error('The governor returned an unknown result state.')
     return {
       scorecardId: args.scorecardId.toString(), weights: args.tierWeights.map(item => ({ tierId: Number(item.id), weight: item.cashOutWeight.toString() })),
       submitter: args.caller, state: Number(state), stateName: STATE_NAMES[Number(state)], submittedAt, attestationsBegin,
@@ -393,14 +393,14 @@ function actionCall(market: MarketSnapshot, action: LifecycleAction, account: Ad
     case 'submit-scorecard': case 'ratify': {
       const weights = nativeWeights(market, action.weights)
       fn = action.kind === 'ratify' ? 'ratifyScorecardFrom' : 'submitScorecardFor'; args = [id, weights]
-      title = action.kind === 'ratify' ? 'Ratify scorecard' : 'Propose scorecard'
+      title = action.kind === 'ratify' ? 'Ratify result' : 'Propose result'
       details.push(...weights.map(item => ({ label: `Range ${item.id}`, value: `${item.cashOutWeight} / ${SCORECARD_WEIGHT_TOTAL}` })))
       break
     }
     case 'attest': case 'revoke':
-      fn = action.kind === 'attest' ? 'attestToScorecardFrom' : 'revokeAttestationFrom'; args = [id, uint(action.scorecardId, 'scorecard ID', false)]
-      title = action.kind === 'attest' ? 'Attest to scorecard' : 'Revoke attestation'
-      details.push({ label: 'Scorecard', value: action.scorecardId }); break
+      fn = action.kind === 'attest' ? 'attestToScorecardFrom' : 'revokeAttestationFrom'; args = [id, uint(action.scorecardId, 'result ID', false)]
+      title = action.kind === 'attest' ? 'Attest result' : 'Revoke attestation'
+      details.push({ label: 'Result', value: action.scorecardId }); break
     case 'fulfill': case 'no-contest':
       to = d.deployer; abi = DEFIFA_ABI.DefifaDeployer
       fn = action.kind === 'fulfill' ? 'fulfillCommitmentsOf' : 'triggerNoContestFor'; args = [id]
@@ -425,25 +425,25 @@ async function assertAction(client: PublicClient, market: MarketSnapshot, action
     case 'transfer': await assertOwned(client, market, tokenIdsFor(market, [action.tokenId]), account); break
     case 'delegate': if (market.phase !== 1) throw new Error('Attestation delegation can only change while entry is open.'); break
     case 'submit-scorecard':
-      if (market.phase !== 3) throw new Error('Scorecards can only be proposed during the native scoring phase.')
+      if (market.phase !== 3) throw new Error('Results can only be proposed during the native scoring phase.')
       if (nativeWeights(market, action.weights).some(weight => weight.cashOutWeight > 0n && BigInt(market.tiers.find(tier => BigInt(tier.tierId) === weight.id)!.supply) === 0n)) {
-        throw new Error('A range with no circulating NFTs cannot receive a scorecard payout weight.')
+        throw new Error('A range with no circulating NFTs cannot receive a result payout weight.')
       }
       break
     case 'attest': case 'revoke': {
-      const cardId = uint(action.scorecardId, 'scorecard ID', false)
+      const cardId = uint(action.scorecardId, 'result ID', false)
       const [state, attested] = await Promise.all([
         read<number>(market.governor, 'DefifaGovernor', 'stateOf', [id, cardId]),
         read<boolean>(market.governor, 'DefifaGovernor', 'hasAttestedTo', [id, cardId, account]),
       ])
-      if (action.kind === 'attest' && (market.phase !== 3 || ![1, 3, 4].includes(Number(state)) || attested)) throw new Error('This wallet cannot attest to that scorecard now.')
-      if (action.kind === 'revoke' && (Number(state) !== 1 || !attested)) throw new Error('An attestation can only be revoked while its scorecard is active.')
+      if (action.kind === 'attest' && (market.phase !== 3 || ![1, 3, 4].includes(Number(state)) || attested)) throw new Error('This wallet cannot attest to that result now.')
+      if (action.kind === 'revoke' && (Number(state) !== 1 || !attested)) throw new Error('An attestation can only be revoked while its result is active.')
       break
     }
     case 'ratify': {
       const cardId = await read<bigint>(market.governor, 'DefifaGovernor', 'scorecardIdOf', [market.hook, nativeWeights(market, action.weights)])
       const state = await read<number>(market.governor, 'DefifaGovernor', 'stateOf', [id, cardId])
-      if (market.phase !== 3 || Number(state) !== 3) throw new Error('The scorecard has not completed the native quorum, grace and timelock requirements.')
+      if (market.phase !== 3 || Number(state) !== 3) throw new Error('The result has not completed the native quorum, grace and timelock requirements.')
       break
     }
     case 'fulfill': if (market.phase !== 4 || market.commitmentsFulfilled) throw new Error('There are no pending ratified game commitments.'); break
@@ -552,7 +552,7 @@ export async function verifyLifecycleReceipt(request: LifecycleRequest, receipt:
       const cardId = await read<bigint>(market.governor, 'DefifaGovernor', 'scorecardIdOf', [market.hook, weights])
       const events = receiptEvents<SubmittedArgs>(receipt, 'DefifaGovernor', d.governor, 'ScorecardSubmitted')
       if (!events.some(item => item.gameId === id && item.scorecardId === cardId && sameAddress(item.caller, account) && exactWeights(item.tierWeights, weights))) {
-        throw new Error('The receipt does not confirm the complete reviewed scorecard.')
+        throw new Error('The receipt does not confirm the complete reviewed result.')
       }
       await read<number>(market.governor, 'DefifaGovernor', 'stateOf', [id, cardId]); break
     }
@@ -574,7 +574,7 @@ export async function verifyLifecycleReceipt(request: LifecycleRequest, receipt:
       if (!events.some(item => item.gameId === id && item.scorecardId === cardId && sameAddress(item.caller, account))
         || !setWeights.some(item => sameAddress(item.caller, d.governor) && exactWeights(item.tierWeights, weights))
         || market.ratifiedScorecardId !== cardId.toString() || !matched || !market.commitmentsFulfilled || market.phase !== 4) {
-        throw new Error('The receipt does not confirm the ratified scorecard and native fulfillment.')
+        throw new Error('The receipt does not confirm the ratified result and native fulfillment.')
       }
       break
     }

@@ -92,7 +92,7 @@ export function validateMarket(input: unknown, now?: number): MarketDefinition {
     throw new Error(`Entry must last between 1 and ${MAX_ENTRY_DURATION_SECONDS} seconds.`)
   }
   if (resolvesAt <= entryClosesAt || resolvesAt - entryClosesAt > MAX_RESOLUTION_DURATION_SECONDS) {
-    throw new Error('Observation must end after entry closes and fit the Defifa scorecard timeout.')
+    throw new Error('Observation must end after entry closes and fit the Defifa result timeout.')
   }
   if (now !== undefined) {
     if (!Number.isSafeInteger(now) || now < 0) throw new Error('Current time must be an integer timestamp in seconds.')

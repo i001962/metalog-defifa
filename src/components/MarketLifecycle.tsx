@@ -134,7 +134,7 @@ export function MarketLifecycle({ lifecycle, current, loading, error, onRefresh,
       </details>
       {lifecycle.cashOutMode && <div className="section">
         <h3>{cashOutLabel}</h3>
-        <p className="hint">Select the NFTs to burn. {lifecycle.cashOutMode === 'cash-out' ? 'The ratified scorecard determines their payout.' : 'Refunding returns their available value.'}</p>
+        <p className="hint">Select the NFTs to burn. {lifecycle.cashOutMode === 'cash-out' ? 'The ratified result determines their payout.' : 'Refunding returns their available value.'}</p>
         {tokenIds.length > 0 && matchingWallet && <>
           {quote.isFetching && <p role="status">Checking the selected NFTs and payout…</p>}
           {quote.error && <p className="error" role="alert">{quote.error.message}</p>}
@@ -164,11 +164,11 @@ export function MarketLifecycle({ lifecycle, current, loading, error, onRefresh,
       </details>
     </section>
     <section aria-labelledby="scorecards">
-      <h2 id="scorecards">Scorecards</h2>
-      <p className="hint">The ratified scorecard controls payouts. Attestation grace is {duration(lifecycle.attestationGraceSeconds)}; the ratification timelock is {duration(lifecycle.timelockSeconds)}.</p>
-      {lifecycle.scorecards.length === 0 && <p>{lifecycle.scorecardsComplete ? 'No scorecards have been proposed.' : 'No scorecards on this page.'}</p>}
+      <h2 id="scorecards">Results</h2>
+      <p className="hint">The ratified result controls payouts. Attestation grace is {duration(lifecycle.attestationGraceSeconds)}; the ratification timelock is {duration(lifecycle.timelockSeconds)}.</p>
+      {lifecycle.scorecards.length === 0 && <p>{lifecycle.scorecardsComplete ? 'No results have been proposed.' : 'No results on this page.'}</p>}
       {lifecycle.scorecards.map(card => <details key={card.scorecardId} className="scorecard">
-        <summary>Scorecard <code>{card.scorecardId}</code> · {card.stateName}</summary>
+        <summary>Result <code>{card.scorecardId}</code> · {card.stateName}</summary>
         <dl className="facts">
           <dt>Submitted</dt><dd>{utcTime(card.submittedAt)}</dd>
           <dt>Proposed by</dt><dd><code>{card.submitter}</code></dd>
@@ -183,20 +183,20 @@ export function MarketLifecycle({ lifecycle, current, loading, error, onRefresh,
           {card.weights.filter(item => BigInt(item.weight) > 0n).map(item => <tr key={item.tierId}><td>{market.ranges.find(range => range.tierId === item.tierId)?.label}</td><td>{formatUnits(BigInt(item.weight), 16)}%</td></tr>)}
         </tbody></table></div>
         <div className="actions">
-          <button type="button" aria-label={`Attest scorecard ${card.scorecardId}`} disabled={!canAct || !card.canAttest}
+          <button type="button" aria-label={`Attest result ${card.scorecardId}`} disabled={!canAct || !card.canAttest}
             onClick={() => void act({ kind: 'attest', scorecardId: card.scorecardId })}>Attest</button>
-          <button type="button" aria-label={`Revoke attestation for scorecard ${card.scorecardId}`} disabled={!canAct || !card.canRevoke}
+          <button type="button" aria-label={`Revoke attestation for result ${card.scorecardId}`} disabled={!canAct || !card.canRevoke}
             onClick={() => void act({ kind: 'revoke', scorecardId: card.scorecardId })}>Revoke attestation</button>
-          <button type="button" aria-label={`Ratify scorecard ${card.scorecardId}`} disabled={!canAct || !card.canRatify}
+          <button type="button" aria-label={`Ratify result ${card.scorecardId}`} disabled={!canAct || !card.canRatify}
             onClick={() => void act({ kind: 'ratify', weights: card.weights })}>Ratify</button>
         </div>
       </details>)}
       <div className="actions">
-        {scorecardsPaged && <button type="button" disabled={loading || busy} onClick={() => onPage('scorecards')}>First scorecards</button>}
-        {lifecycle.scorecardsNextCursor && <button type="button" disabled={loading || busy} onClick={() => onPage('scorecards', lifecycle.scorecardsNextCursor!)}>Load more scorecards</button>}
+        {scorecardsPaged && <button type="button" disabled={loading || busy} onClick={() => onPage('scorecards')}>First results</button>}
+        {lifecycle.scorecardsNextCursor && <button type="button" disabled={loading || busy} onClick={() => onPage('scorecards', lifecycle.scorecardsNextCursor!)}>Load more results</button>}
       </div>
-      {!lifecycle.scorecardsComplete && <p className="hint">Only part of the scorecard history is shown.</p>}
-      <details><summary>Propose a scorecard</summary>
+      {!lifecycle.scorecardsComplete && <p className="hint">Only part of the results history is shown.</p>}
+      <details><summary>Propose a result</summary>
         <label className="field"><span>Propose one range</span><select value="" onChange={event => {
           if (!event.target.value) return
           setPercentages(market.ranges.map(range => String(range.tierId) === event.target.value ? '100' : '0'))
@@ -210,9 +210,9 @@ export function MarketLifecycle({ lifecycle, current, loading, error, onRefresh,
             value={percentages[index]} onChange={event => { setPercentages(previous => previous.map((value, i) => i === index ? event.target.value : value)); setScoreTouched(true) }} /></td></tr>)}
         </tbody></table></div>
         {scoreTouched && scoreDraft.error && <p className="error" role="alert">{scoreDraft.error}</p>}
-        {matchingWallet && !lifecycle.canSubmitScorecard && <p className="hint">Scorecard proposals are unavailable in this phase.</p>}
+        {matchingWallet && !lifecycle.canSubmitScorecard && <p className="hint">Result proposals are unavailable in this phase.</p>}
         <div className="actions"><button type="button" disabled={!canAct || !lifecycle.canSubmitScorecard || !scoreDraft.weights}
-          onClick={() => scoreDraft.weights && void act({ kind: 'submit-scorecard', weights: scoreDraft.weights })}>Review scorecard</button></div>
+          onClick={() => scoreDraft.weights && void act({ kind: 'submit-scorecard', weights: scoreDraft.weights })}>Review result</button></div>
       </details>
       {lifecycle.canFulfill && <div className="actions"><button type="button" disabled={!canAct} onClick={() => void act({ kind: 'fulfill' })}>Review commitment fulfillment</button></div>}
       {!market.noContestTriggered && !market.ratifiedScorecardId && <details><summary>No contest</summary>

@@ -24,7 +24,7 @@ const describeBoundaryIssue = (message: string) => message.replace(/Boundary (\d
 export function CreateMarket({ now }: { now: number }) {
   const [prompt, setPrompt] = useState('')
   const [source, setSource] = useState('')
-  const [rule, setRule] = useState('Percentage change = 100 × (end value / start value − 1). Use the specified source at the observation start and end. Payouts follow the ratified scorecard.')
+  const [rule, setRule] = useState('Percentage change = 100 × (end value / start value − 1). Use the specified source at the observation start and end. Payouts follow the ratified result.')
   const [delegate, setDelegate] = useState('')
   const [open, setOpen] = useState(dateInput(now + 600))
   const [close, setClose] = useState(dateInput(now + 24 * 3600))
@@ -289,8 +289,8 @@ export function CreateMarket({ now }: { now: number }) {
     <details><summary>View ranges</summary>{rangeError && <p className="hint">Showing the last valid ranges.</p>}<div className="table-wrap"><table><thead><tr><th>NFT tier</th><th>Range</th></tr></thead><tbody>{ranges.map(range => <tr key={range.tierId}><td>{range.tierId}</td><td>{range.label}</td></tr>)}</tbody></table></div></details>
     <div className="section">
       <label className="field"><span>Network</span><select className="network-select" value={chainId} onChange={event => setChainId(Number(event.target.value))}>{SUPPORTED_CHAINS.map(chain => <option key={chain.id} value={chain.id}>{chain.name}</option>)}</select></label>
-      {isTestnet && <div className="field"><div><button type="button" onClick={applyShortSchedule}>Use short test schedule</button></div><small>{testSchedule ? <>Opens in 2–3 minutes, with 10 minutes for entry and {(testSchedule.resolvesAt - testSchedule.entryClosesAt) / 60} minutes for observation.</> : 'Preserves the observation duration entered above.'} Scorecards still take at least 1 day to settle.</small>{scheduleError && <small className="error" role="alert">{scheduleError}</small>}</div>}
-      <p className="hint">Payouts follow the ratified scorecard. Entry can be refunded while minting is open.</p>
+      {isTestnet && <div className="field"><div><button type="button" onClick={applyShortSchedule}>Use short test schedule</button></div><small>{testSchedule ? <>Opens in 2–3 minutes, with 10 minutes for entry and {(testSchedule.resolvesAt - testSchedule.entryClosesAt) / 60} minutes for observation.</> : 'Preserves the observation duration entered above.'} Results still take at least 1 day to settle.</small>{scheduleError && <small className="error" role="alert">{scheduleError}</small>}</div>}
+      <p className="hint">Payouts follow the ratified result. Entry can be refunded while minting is open.</p>
       <div className="actions">
         <button type="submit" className="primary" disabled={busy || transactions.busy || Boolean(transactions.pending) || Boolean(rangeError || delegateDraft.error)}>{busy ? 'Preparing market…' : !wallet.address ? 'Connect to create' : wallet.isSigna ? 'Use external wallet to create' : 'Review market'}</button>
         <button type="button" disabled={!draft.definition} onClick={() => draft.definition && downloadJson(draft.definition, 'metalog-market.json')}>Download definition</button>

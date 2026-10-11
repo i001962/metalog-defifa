@@ -167,7 +167,7 @@ describe('native lifecycle preparation', () => {
     market.tiers[1].supply = '1'
     expect(decodeFunctionData({ abi: DEFIFA_ABI.DefifaGovernor, data: (await prepareLifecycleAction(market, { kind: 'submit-scorecard', weights }, account)).data }).functionName).toBe('submitScorecardFor')
     state = 4
-    await expect(prepareLifecycleAction(market, { kind: 'attest', scorecardId: '123' }, account)).resolves.toMatchObject({ value: 0n })
+    await expect(prepareLifecycleAction(market, { kind: 'attest', scorecardId: '123' }, account)).resolves.toMatchObject({ value: 0n, title: 'Attest result', details: expect.arrayContaining([{ label: 'Result', value: '123' }]) })
     attested = true
     await expect(prepareLifecycleAction(market, { kind: 'revoke', scorecardId: '123' }, account)).rejects.toThrow('only be revoked')
     await expect(prepareLifecycleAction(market, { kind: 'ratify', weights }, account)).rejects.toThrow('timelock')
@@ -319,7 +319,7 @@ describe('receipt effects and reload recovery', () => {
     const tx = await prepareLifecycleAction(market, { kind: 'submit-scorecard', weights }, account)
     const event = log('DefifaGovernor', d.governor, 'ScorecardSubmitted', { gameId: 7n, scorecardId: 123n, tierWeights: [{ id: 1n, cashOutWeight: SCORECARD_WEIGHT_TOTAL }], isDefaultAttestationDelegate: false, caller: account })
     await expect(verifyLifecycleReceipt(tx, receipt([event]))).resolves.toBeUndefined()
-    await expect(verifyLifecycleReceipt(tx, receipt([{ ...event, address: other }]))).rejects.toThrow('complete reviewed scorecard')
+    await expect(verifyLifecycleReceipt(tx, receipt([{ ...event, address: other }]))).rejects.toThrow('complete reviewed result')
     await expect(verifyLifecycleReceipt({ ...tx, value: 1n }, receipt([event]))).rejects.toThrow('native lifecycle')
     await expect(verifyLifecycleReceipt({ ...tx, data: `${tx.data}00` }, receipt([event]))).rejects.toThrow('calldata')
   })

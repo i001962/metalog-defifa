@@ -17,6 +17,6 @@ export function MarketFacts({ definition }: { definition: MarketDefinition }) {
     <dt>Ranges</dt><dd>{definition.rangeBoundaries === undefined
       ? <>{ranges.length - 2} equal ranges of {definition.rangeWidth}%, plus two overflow ranges.</>
       : <>{ranges.length} ranges with cutoffs at {ranges.slice(0, -1).map(range => formatPercentage(range.upper!, RANGE_DECIMAL_PLACES)).join(', ')}. Outer ranges include overflow.</>}</dd>
-    <dt>Payout</dt><dd>The ratified scorecard.</dd>
+    <dt>Payout</dt><dd>The ratified result.</dd>
   </dl><p className="hint"><a href="https://github.com/BallKidz/defifa/tree/main/src" target="_blank" rel="noreferrer">Built on Defifa, see engine code</a></p></details>
 }

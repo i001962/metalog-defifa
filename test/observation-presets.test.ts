@@ -37,7 +37,7 @@ describe('observation presets', () => {
     expect(resolutionRule).toContain('do not round before assigning')
     expect(resolutionRule).toContain('source or either exact candle is unavailable')
     expect(resolutionRule).toContain('Do not invent a price')
-    expect(resolutionRule).toContain('ratified scorecard controls payouts')
+    expect(resolutionRule).toContain('ratified result controls payouts')
     expect(resolutionRule).toContain('does not fetch prices, guarantee availability or settle automatically')
   })
 
