@@ -135,8 +135,8 @@ export function ForecastEditor({ definition, market, current = true, onSubmitted
       <label className="field"><span>Standard deviation (%)</span><input aria-label="Standard deviation (%)" inputMode="decimal" value={sigma} onChange={event => setSigma(event.target.value)} /></label>
     </div> : mode === 'coefficients' ? <>
       <div className="coefficient-fields">{COEFFICIENT_LABELS.map((label, index) => <label className="field" key={label}>
-        <span>a<sub>{index + 1}</sub> · {label}</span>
-        <input aria-label={`a${index + 1} · ${label}`} inputMode="decimal" spellCheck={false}
+        <span>a<sub>{index + 1}</sub> | {label}</span>
+        <input aria-label={`a${index + 1} | ${label}`} inputMode="decimal" spellCheck={false}
           aria-invalid={curve.error !== null} aria-describedby={curve.error ? 'forecast-error' : undefined}
           value={coefficientFields[index]}
           onChange={event => {
@@ -171,7 +171,7 @@ export function ForecastEditor({ definition, market, current = true, onSubmitted
       </div>}
     </div>
     {model.error && <p id="forecast-error" className="error" role="alert">{model.error}</p>}
-    {tablePreview && <div className="positions"><h3>Positions ({tablePreview.allocation.count}){!model.preview && <small> · Last valid preview</small>}</h3>
+    {tablePreview && <div className="positions"><h3>Positions ({tablePreview.allocation.count}){!model.preview && <small> | Last valid preview</small>}</h3>
       <div className="positions-columns" role="region" aria-label="Positions">
         {[0, positionColumnSize].map((offset, column) => <table key={column} aria-label={`Positions, ${column === 0 ? 'first' : 'second'} half`}>
           <thead><tr><th>Range</th><th>{manual ? 'Reference curve' : 'Your curve'}</th><th>NFTs</th><th>Your positions</th></tr></thead><tbody>

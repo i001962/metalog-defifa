@@ -58,7 +58,7 @@ function Entry({ entry, market, explorer }: { entry: EntryHistoryEntry; market: 
   const recognized = entry.status === 'verified-curve' || entry.status === 'verified-manual'
   const label = entry.status === 'verified-curve' ? 'Curve entry' : entry.status === 'verified-manual' ? 'By range entry' : 'Curve unavailable'
   return <details className="entry-record">
-    <summary>{utcTime(entry.timestamp)} · {shortAddress(entry.account)} · {entry.stakeWei === null ? 'Stake unavailable' : `${formatEther(BigInt(entry.stakeWei))} ETH`} · {label}</summary>
+    <summary>{utcTime(entry.timestamp)} | {shortAddress(entry.account)} | {entry.stakeWei === null ? 'Stake unavailable' : `${formatEther(BigInt(entry.stakeWei))} ETH`} | {label}</summary>
     <div className="row"><a href={`${explorer}/tx/${entry.transactionHash}`} target="_blank" rel="noreferrer">View mint receipt</a><button type="button" onClick={() => downloadJson(entry, `metalog-entry-${entry.transactionHash}.json`)}>Download entry JSON</button></div>
     <dl className="facts">
       <dt>Account</dt><dd><a href={`${explorer}/address/${entry.account}`} target="_blank" rel="noreferrer">{entry.account}</a></dd>

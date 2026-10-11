@@ -163,9 +163,9 @@ test('example curve, decimals, raw validation and independent stake errors', asy
   }
   await page.getByRole('button', { name: 'Expressive', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Expressive', exact: true })).toHaveAttribute('aria-pressed', 'true')
-  const median = page.getByRole('textbox', { name: 'a1 · Median', exact: true })
-  const scale = page.getByRole('textbox', { name: 'a2 · Base spread', exact: true })
-  const middle = page.getByRole('textbox', { name: 'a4 · Middle spread', exact: true })
+  const median = page.getByRole('textbox', { name: 'a1 | Median', exact: true })
+  const scale = page.getByRole('textbox', { name: 'a2 | Base spread', exact: true })
+  const middle = page.getByRole('textbox', { name: 'a4 | Middle spread', exact: true })
   const original = await scale.inputValue()
   const stake = page.getByRole('textbox', { name: 'Stake (ETH)' })
   await stake.fill('.')
@@ -212,7 +212,7 @@ test('example curve, decimals, raw validation and independent stake errors', asy
 test('coefficient drafts preserve focused controls and last valid curve without enabling stale actions', async ({ page }) => {
   await page.goto('/markets/example')
   await page.getByRole('button', { name: 'Expressive', exact: true }).click()
-  const labels = ['a1 · Median', 'a2 · Base spread', 'a3 · Tail asymmetry', 'a4 · Middle spread', 'a5 · Shape asymmetry', 'a6 · Tail spread']
+  const labels = ['a1 | Median', 'a2 | Base spread', 'a3 | Tail asymmetry', 'a4 | Middle spread', 'a5 | Shape asymmetry', 'a6 | Tail spread']
   for (const label of labels) {
     const field = page.getByRole('textbox', { name: label, exact: true })
     await expect(field).toBeVisible()
@@ -281,9 +281,9 @@ test('three editors retain independent valid and invalid drafts and export only 
   const mean = page.getByRole('textbox', { name: 'Mean (%)', exact: true })
   const sigma = page.getByRole('textbox', { name: 'Standard deviation (%)', exact: true })
   const stake = page.getByRole('textbox', { name: 'Stake (ETH)' })
-  const median = page.getByRole('textbox', { name: 'a1 · Median', exact: true })
-  const scale = page.getByRole('textbox', { name: 'a2 · Base spread', exact: true })
-  const middle = page.getByRole('textbox', { name: 'a4 · Middle spread', exact: true })
+  const median = page.getByRole('textbox', { name: 'a1 | Median', exact: true })
+  const scale = page.getByRole('textbox', { name: 'a2 | Base spread', exact: true })
+  const middle = page.getByRole('textbox', { name: 'a4 | Middle spread', exact: true })
   const counts = page.getByRole('region', { name: 'NFT counts', exact: true }).getByRole('textbox', { name: /^NFTs for / })
   const bars = page.getByRole('img', { name: 'Your probability distribution', exact: true }).locator('rect')
   const heights = () => bars.evaluateAll(elements => elements.map(element => element.getAttribute('height')))

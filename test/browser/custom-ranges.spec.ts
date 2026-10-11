@@ -100,7 +100,7 @@ test('unequal range definitions preserve exact intervals and NFT allocations in 
   await diagram.getByRole('button', { name: 'Range 2: -4.25% to < -0.75%', exact: true }).focus()
   await expect(diagram.locator('figcaption')).toHaveText('Range 2: -4.25% to < -0.75%')
   await diagram.getByRole('button', { name: 'Range 4: ≥ +3%', exact: true }).click()
-  await expect(diagram.locator('figcaption')).toHaveText('Range 4: ≥ +3% · Overflow')
+  await expect(diagram.locator('figcaption')).toHaveText('Range 4: ≥ +3% | Overflow')
   await page.getByLabel('Range 2 upper (%)', { exact: true }).fill('')
   await expect(diagram.getByText('Last valid ranges', { exact: true })).toBeVisible()
   await expect(diagram.locator('rect')).toHaveCount(2)

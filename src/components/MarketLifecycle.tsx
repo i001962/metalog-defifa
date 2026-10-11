@@ -107,7 +107,7 @@ export function MarketLifecycle({ lifecycle, current, loading, error, onRefresh,
       {!address ? <button type="button" onClick={() => connect()}>Connect to view your NFTs</button>
         : !matchingWallet ? <p role="status">{error ? 'Positions for this wallet are unavailable.' : 'Loading positions for this wallet…'}</p>
           : <>
-            <p className="hint">{inventory.totalOwned} owned · {inventory.tokens.length} shown · block {market.blockNumber}</p>
+            <p className="hint">{inventory.totalOwned} owned | {inventory.tokens.length} shown | block {market.blockNumber}</p>
             {!inventory.complete && <p className="hint">This is a partial inventory. Load more to check the remaining positions.</p>}
             {inventory.tokens.length === 0 ? <p>{inventory.complete && inventory.totalOwned === '0' ? 'You do not own any NFTs in this game.' : 'No owned NFTs on this page.'}</p>
               : <div className="table-wrap"><table className="inventory-table"><thead><tr><th>Select</th><th>NFT</th><th>Range</th></tr></thead><tbody>
@@ -168,7 +168,7 @@ export function MarketLifecycle({ lifecycle, current, loading, error, onRefresh,
       <p className="hint">The ratified result controls payouts. Attestation grace is {duration(lifecycle.attestationGraceSeconds)}; the ratification timelock is {duration(lifecycle.timelockSeconds)}.</p>
       {lifecycle.scorecards.length === 0 && <p>{lifecycle.scorecardsComplete ? 'No results have been proposed.' : 'No results on this page.'}</p>}
       {lifecycle.scorecards.map(card => <details key={card.scorecardId} className="scorecard">
-        <summary>Result <code>{card.scorecardId}</code> · {card.stateName}</summary>
+        <summary>Result <code>{card.scorecardId}</code> | {card.stateName}</summary>
         <dl className="facts">
           <dt>Submitted</dt><dd>{utcTime(card.submittedAt)}</dd>
           <dt>Proposed by</dt><dd><code>{card.submitter}</code></dd>

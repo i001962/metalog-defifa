@@ -93,7 +93,7 @@ test('SIPmath downloads preserve all three modes and agree with repeatable previ
       await page.getByRole('textbox', { name: 'Stake (ETH)' }).fill('0.00012')
     } else if (mode === 'Expressive') {
       for (let index = 0; index < expressive.length; index++) {
-        await page.getByRole('textbox', { name: new RegExp(`^a${index + 1} · `) }).fill(String(expressive[index]))
+        await page.getByRole('textbox', { name: new RegExp(`^a${index + 1} \\| `) }).fill(String(expressive[index]))
       }
     } else {
       const counts = page.getByRole('region', { name: 'NFT counts', exact: true }).getByRole('textbox')
@@ -174,7 +174,7 @@ test('invalid active drafts disable native and SIPmath downloads through mode ch
   await stake.fill('0.0001')
   for (const button of buttons) await expect(button).toBeEnabled()
   await page.getByRole('button', { name: 'Expressive', exact: true }).click()
-  const scale = page.getByRole('textbox', { name: 'a2 · Base spread', exact: true })
+  const scale = page.getByRole('textbox', { name: 'a2 | Base spread', exact: true })
   await scale.fill('-1')
   for (const button of buttons) await expect(button).toBeDisabled()
   await page.getByRole('button', { name: 'Simple', exact: true }).click()

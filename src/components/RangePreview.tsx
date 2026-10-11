@@ -35,7 +35,7 @@ export function RangePreview({ ranges, stale, invalidBoundaries, selected, bound
     onBoundaryChange?.(index, String(Number(Math.min(MAX_RANGE_BOUNDARY, Math.max(-MAX_RANGE_BOUNDARY, value)).toFixed(RANGE_DECIMAL_PLACES))))
   }
   return <figure className="range-preview" aria-label="Range visualization">
-    <div className="range-preview-heading"><span>{ranges.length} ranges · numbered by NFT tier</span>{stale && <span>Last valid ranges</span>}</div>
+    <div className="range-preview-heading"><span>{ranges.length} ranges | numbered by NFT tier</span>{stale && <span>Last valid ranges</span>}</div>
     <div className="range-preview-map">
       <button type="button" className="range-overflow" aria-label={name(first)} aria-pressed={selected === first.tierId} onFocus={() => onSelect(first.tierId)} onMouseEnter={() => onSelect(first.tierId)} onClick={() => onSelect(first.tierId)}>1 ←<span>{first.label}</span></button>
       <div className="range-preview-finite" ref={plot}>
@@ -71,7 +71,7 @@ export function RangePreview({ ranges, stale, invalidBoundaries, selected, bound
       </div>
       <button type="button" className="range-overflow" aria-label={name(last)} aria-pressed={selected === last.tierId} onFocus={() => onSelect(last.tierId)} onMouseEnter={() => onSelect(last.tierId)} onClick={() => onSelect(last.tierId)}>{last.tierId} →<span>{last.label}</span></button>
     </div>
-    <figcaption>{boundary !== null && invalidBoundaries.some(item => item.index === boundary) ? `Edge between ranges ${boundary + 1} and ${boundary + 2} needs attention. Chart shows the last valid ranges.` : boundary !== null && cutoffs[boundary] !== undefined ? `Edge between ranges ${boundary + 1} and ${boundary + 2}: ${formatPercentage(cutoffs[boundary], RANGE_DECIMAL_PLACES)}` : active ? `${name(active)}${active.lower === null || active.upper === null ? ' · Overflow' : ''}` : 'Select a range to highlight its boundaries.'}</figcaption>
+    <figcaption>{boundary !== null && invalidBoundaries.some(item => item.index === boundary) ? `Edge between ranges ${boundary + 1} and ${boundary + 2} needs attention. Chart shows the last valid ranges.` : boundary !== null && cutoffs[boundary] !== undefined ? `Edge between ranges ${boundary + 1} and ${boundary + 2}: ${formatPercentage(cutoffs[boundary], RANGE_DECIMAL_PLACES)}` : active ? `${name(active)}${active.lower === null || active.upper === null ? ' | Overflow' : ''}` : 'Select a range to highlight its boundaries.'}</figcaption>
     <p className="hint">{onBoundaryChange ? 'Drag a boundary. Unfixed boundaries recalibrate automatically. Arrow keys adjust by 0.01%; Shift adjusts by 1%.' : 'Choose Advanced to drag individual boundaries. Your Simple settings are preserved.'}</p>
   </figure>
 }
