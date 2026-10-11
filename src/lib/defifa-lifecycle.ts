@@ -1,5 +1,5 @@
 import {
-  BaseError, ContractFunctionRevertedError, decodeAbiParameters, decodeFunctionData, encodeAbiParameters,
+  BaseError, ContractFunctionRevertedError, decodeAbiParameters, encodeAbiParameters,
   encodeFunctionData, getAbiItem, parseAbi, parseEventLogs, zeroAddress,
   type Address, type Hex, type PublicClient, type TransactionReceipt,
 } from 'viem'
@@ -9,6 +9,7 @@ import { assertChain, contractRead, DEFIFA_ABI, deploymentForChain, sameAddress,
 import { publicClientForChain } from './wallet'
 import { firstBlockAtTimestamp, MAX_LOG_BLOCKS } from './history-blocks'
 import type { PreparedTransaction } from './transaction'
+import { decodeDefifaTransactionCall } from './transaction-scope'
 import { SCORECARD_WEIGHT_TOTAL, type TierWeight } from '../domain/scorecard'
 import { MAX_POSITIONS } from '../domain/allocation'
 export { SCORECARD_WEIGHT_TOTAL, scorecardWeightsFromPercentages, type TierWeight } from '../domain/scorecard'
@@ -488,12 +489,8 @@ export async function verifyLifecycleReceipt(request: LifecycleRequest, receipt:
   const account = signer(request.account)
   const client = publicClientForChain(request.chainId)
   const d = await verifyDefifaDeployment(client, request.chainId, receipt.blockNumber)
-  let contract: keyof typeof DEFIFA_ABI
-  if (sameAddress(request.to, d.governor)) contract = 'DefifaGovernor'
-  else if (sameAddress(request.to, d.deployer)) contract = 'DefifaDeployer'
-  else if (sameAddress(request.to, d.terminal)) contract = 'JBMultiTerminal'
-  else contract = 'DefifaHook'
-  const decoded = decodeFunctionData({ abi: DEFIFA_ABI[contract], data: request.data })
+  const decoded = decodeDefifaTransactionCall(request, d)
+  const { contract } = decoded
   const args = decoded.args as readonly unknown[]
   let id: bigint
   if (contract === 'DefifaHook') id = await contractRead<bigint>(client, request.to, contract, 'projectId', [], receipt.blockNumber)
