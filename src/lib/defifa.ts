@@ -296,6 +296,46 @@ function entryMetadata(implementation: Address, definition: MarketDefinition, be
   return { delegate, metadata: createHookMetadata([hookMetadataId(implementation, 'pay')], [payload]) }
 }
 
+export function decodeEntryMemo(memoText: string, metadata: Hex) {
+  if (memoText.length > 1_024 || metadata.length > 14_000) throw new Error('The recorded curve entry is too large.')
+  const memo = JSON.parse(memoText) as { schema?: unknown; units?: unknown; coefficients?: unknown; count?: unknown; mode?: unknown; quantities?: unknown }
+  if (!memo || (memo.schema !== 'metalog.entry.v1' && memo.schema !== 'metalog.entry.v2') || memo.units !== 'percentage-points'
+    || !Array.isArray(memo.coefficients) || typeof memo.count !== 'number') {
+    throw new Error('The recorded curve metadata is not supported.')
+  }
+  if (memo.schema === 'metalog.entry.v2' && (memo.mode !== 'manual' || !Array.isArray(memo.quantities))) {
+    throw new Error('The recorded manual allocation is not supported.')
+  }
+  const coefficients = validateCoefficients(memo.coefficients)
+  return { ...memo, coefficients, count: memo.count, schema: memo.schema, quantities: memo.quantities as number[] | undefined }
+
+}
+
+/** The shared recorded-entry rule used by recovery and public receipt evidence. */
+export function verifyRecordedEntry(
+  market: MarketSnapshot, implementation: Address, owner: Address, amount: bigint,
+  memo: ReturnType<typeof decodeEntryMemo>, metadata: Hex, receipt: TransactionReceipt,
+): { coefficients: Coefficients; allocation: Allocation } {
+  const coefficients = memo.coefficients
+  const allocation = memo.schema === 'metalog.entry.v1'
+    ? allocatePositions(coefficients, market.ranges, memo.count)
+    : allocateManualPositions(coefficients, market.ranges, memo.quantities as number[])
+  if (memo.count !== allocation.count) throw new Error('The recorded position total does not match the NFT counts.')
+  const tierIds = expandedTierIds(allocation)
+  if (amount !== BigInt(market.definition.unitPriceWei) * BigInt(allocation.count)) {
+    throw new Error('The recorded entry does not pay the exact position price.')
+  }
+  const [delegate, encodedIds] = decodeAbiParameters(
+    [{ type: 'address' }, { type: 'uint16[]' }], `0x${metadata.slice(130)}`,
+  )
+  const expectedMetadata = entryMetadata(implementation, market.definition, owner, tierIds)
+  if (!sameAddress(delegate, expectedMetadata.delegate) || JSON.stringify(encodedIds) !== JSON.stringify(tierIds) || metadata !== expectedMetadata.metadata) {
+    throw new Error('The recorded mint metadata does not match the position allocation.')
+  }
+  verifyEntryReceipt(market.hook, owner, tierIds, receipt)
+  return { coefficients, allocation }
+}
+
 /** Recovery rebuilds the effect checks from recorded calldata, without authorizing another send. */
 export async function verifyDefifaTransactionReceipt(
   request: { chainId: number; account: Address; to: Address; data: Hex; value: bigint },
@@ -334,35 +374,11 @@ export async function verifyDefifaTransactionReceipt(
   if (!sameAddress(token, NATIVE_TOKEN) || !sameAddress(beneficiary, owner) || amount !== request.value || minimum !== 0n) {
     throw new Error('The recorded entry amount or beneficiary does not match.')
   }
-  if (memoText.length > 1_024 || metadata.length > 14_000) throw new Error('The recorded curve entry is too large.')
-  const memo = JSON.parse(memoText) as { schema?: unknown; units?: unknown; coefficients?: unknown; count?: unknown; mode?: unknown; quantities?: unknown }
-  if (!memo || (memo.schema !== 'metalog.entry.v1' && memo.schema !== 'metalog.entry.v2') || memo.units !== 'percentage-points'
-    || !Array.isArray(memo.coefficients) || typeof memo.count !== 'number') {
-    throw new Error('The recorded curve metadata is not supported.')
-  }
-  if (memo.schema === 'metalog.entry.v2' && (memo.mode !== 'manual' || !Array.isArray(memo.quantities))) {
-    throw new Error('The recorded manual allocation is not supported.')
-  }
-  const coefficients = validateCoefficients(memo.coefficients)
+  const memo = decodeEntryMemo(memoText, metadata)
   const block = await client.getBlock({ blockNumber: receipt.blockNumber })
   const market = await readMarketAt(client, request.chainId, projectId.toString(), block.number, Number(block.timestamp))
   await assertEntryRules(client, market)
-  const allocation = memo.schema === 'metalog.entry.v1'
-    ? allocatePositions(coefficients, market.ranges, memo.count)
-    : allocateManualPositions(coefficients, market.ranges, memo.quantities as number[])
-  if (memo.count !== allocation.count) throw new Error('The recorded position total does not match the NFT counts.')
-  const tierIds = expandedTierIds(allocation)
-  if (amount !== BigInt(market.definition.unitPriceWei) * BigInt(allocation.count)) {
-    throw new Error('The recorded entry does not pay the exact position price.')
-  }
-  const [delegate, encodedIds] = decodeAbiParameters(
-    [{ type: 'address' }, { type: 'uint16[]' }], `0x${metadata.slice(130)}`,
-  )
-  const expectedMetadata = entryMetadata(d.implementation, market.definition, owner, tierIds)
-  if (!sameAddress(delegate, expectedMetadata.delegate) || JSON.stringify(encodedIds) !== JSON.stringify(tierIds) || metadata !== expectedMetadata.metadata) {
-    throw new Error('The recorded mint metadata does not match the position allocation.')
-  }
-  verifyEntryReceipt(market.hook, owner, tierIds, receipt)
+  verifyRecordedEntry(market, d.implementation, owner, amount, memo, metadata, receipt)
 }
 
 export async function prepareCreateMarket(

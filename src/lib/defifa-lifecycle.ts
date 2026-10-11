@@ -17,7 +17,7 @@ const TOKEN_PAGE_SIZE = 200
 const MAX_LOG_REQUESTS = 16
 // Center's hosted provider rejects wider windows with a generic -32005. Bound
 // requests up front; do not mistake that same code on a small request for a range limit.
-const MAX_LOG_BLOCKS = 500n
+import { firstBlockAtTimestamp, MAX_LOG_BLOCKS } from './history-blocks'
 const MAX_SCORECARDS_PER_PAGE = 100
 const STATE_NAMES = ['Pending', 'Active', 'Defeated', 'Succeeded', 'Queued', 'Ratified'] as const
 const ERC20_ABI = parseAbi(['function decimals() view returns (uint8)', 'event Transfer(address indexed from,address indexed to,uint256 value)'])
@@ -198,31 +198,13 @@ async function readInventory(client: PublicClient, market: MarketSnapshot, accou
 
 /** Bounded binary search finds the first block where scorecard submissions could exist. */
 async function firstScoringBlock(client: PublicClient, market: MarketSnapshot): Promise<bigint> {
-  const floor = BigInt(deploymentForChain(market.chainId).deployerBlock)
-  let high = BigInt(market.blockNumber)
-  if (floor > high) throw new Error('The requested snapshot precedes the configured Defifa deployment.')
-  let low = floor
-  let distance = 1n
-  let reads = 0
-  // Start near this game, not at deployment. Pruned public RPCs can serve a new game
-  // while rejecting an unrelated years-old midpoint of deployment→head.
-  while (high > floor && reads < 64) {
-    const probe = BigInt(market.blockNumber) - distance > floor ? BigInt(market.blockNumber) - distance : floor
-    const block = await client.getBlock({ blockNumber: probe })
-    reads++
-    if (Number(block.timestamp) < market.definition.entryClosesAt) { low = probe + 1n; break }
-    high = probe
-    if (probe === floor) { low = floor; break }
-    distance *= 2n
+  try { return await firstBlockAtTimestamp(client, market, market.definition.entryClosesAt) }
+  catch (error) {
+    if (error instanceof Error && error.message === 'The history range could not be resolved within its read limit.') {
+      throw new Error('The scorecard history range could not be resolved within its read limit.')
+    }
+    throw error
   }
-  for (; low < high && reads < 64; reads++) {
-    const middle = (low + high) / 2n
-    const block = await client.getBlock({ blockNumber: middle })
-    if (Number(block.timestamp) < market.definition.entryClosesAt) low = middle + 1n
-    else high = middle
-  }
-  if (low !== high) throw new Error('The scorecard history range could not be resolved within its read limit.')
-  return low
 }
 
 async function readScorecards(
