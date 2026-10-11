@@ -14,9 +14,10 @@ import { PositionChart } from './PositionChart'
 const COEFFICIENT_LABELS = ['Median', 'Base spread', 'Tail asymmetry', 'Middle spread', 'Shape asymmetry', 'Tail spread']
 type EditorMode = 'moments' | 'coefficients' | 'ranges'
 
-export function ForecastEditor({ definition, market, onSubmitted }: {
+export function ForecastEditor({ definition, market, current = true, onSubmitted }: {
   definition: MarketDefinition
   market?: MarketSnapshot
+  current?: boolean
   onSubmitted?: () => void
 }) {
   const [mean, setMean] = useState('0')
@@ -105,6 +106,7 @@ export function ForecastEditor({ definition, market, onSubmitted }: {
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Export could not be prepared.') }
   }
   async function submit() {
+    if (!current) return
     if (!address) { connect(); return }
     if (isSigna) { connect({ externalOnly: true }); return }
     if (!market || !model.preview || !curve.coefficients) return
@@ -185,13 +187,13 @@ export function ForecastEditor({ definition, market, onSubmitted }: {
       </div>
     </div>}
     <div className="actions">
-      {market && <button className="primary" disabled={!model.preview || Boolean(closed) || submitting || transactions.busy || Boolean(transactions.pending)} onClick={submit}>
+      {market && <button className="primary" disabled={!current || !model.preview || Boolean(closed) || submitting || transactions.busy || Boolean(transactions.pending)} onClick={submit}>
         {submitting ? 'Preparing entry…' : !address ? 'Connect to enter' : isSigna ? 'Use external wallet to enter' : 'Review entry'}
       </button>}
       <button disabled={!model.preview} onClick={() => model.preview && downloadJson(model.preview, 'metalog-forecast.json')}>Download draft</button>
       <button disabled={!model.preview} onClick={downloadSIPmath}>Download SIPmath</button>
     </div>
-    {closed && <p className="hint" style={{ marginTop: 12 }}>{market.stage === 'countdown' ? 'Entry has not opened.' : 'Entry is closed.'}</p>}
+    {current && closed && <p className="hint" style={{ marginTop: 12 }}>{market.stage === 'countdown' ? 'Entry has not opened.' : 'Entry is closed.'}</p>}
     {!market && <p className="hint" style={{ marginTop: 12 }}>Example only. No positions are minted.</p>}
     {error && <p className="error" role="alert">{error}</p>}
   </section>

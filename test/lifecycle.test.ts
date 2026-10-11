@@ -258,6 +258,25 @@ describe('bounded pinned lifecycle reads', () => {
     await expect(readLifecycle(chainId, '7')).rejects.toThrow('rate limit')
   })
 
+  it('bounds Center log requests before its generic limit and preserves full history', async () => {
+    market.phase = 3
+    market.definition.entryClosesAt = now - 3_000
+    blockLogs = [10n, 1_400n].map((age, index) => log('DefifaGovernor', d.governor, 'ScorecardSubmitted', {
+      gameId: 7n, scorecardId: BigInt(index + 123), tierWeights: [{ id: 1n, cashOutWeight: SCORECARD_WEIGHT_TOTAL }],
+      isDefaultAttestationDelegate: false, caller: other,
+    }, head - age))
+    mocks.getLogs.mockImplementation(async ({ fromBlock, toBlock }: { fromBlock: bigint; toBlock: bigint }) => {
+      if (toBlock - fromBlock + 1n > 500n) throw Object.assign(new Error('RPC request failed'), { code: -32005 })
+      return blockLogs.filter(item => item.blockNumber !== null && item.blockNumber >= fromBlock && item.blockNumber <= toBlock)
+    })
+    const result = await readLifecycle(chainId, '7')
+    expect(result.scorecards.map(card => card.scorecardId)).toEqual(['123', '124'])
+    expect(result.scorecardsComplete).toBe(true)
+    expect(mocks.getLogs).toHaveBeenCalledTimes(4)
+    mocks.getLogs.mockRejectedValue(Object.assign(new Error('RPC request failed'), { code: -32005 }))
+    await expect(readLifecycle(chainId, '7')).rejects.toThrow('RPC request failed')
+  })
+
   it('keeps recent and early proposals when splitting pages and exposes bounded continuation', async () => {
     market.phase = 3
     market.definition.entryClosesAt = now - 5_000

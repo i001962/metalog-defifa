@@ -43,7 +43,9 @@ Settlement has a **minimum one-day attestation grace period** and this app confi
 
 The Oracle receives voting power and remains subject to scorecard ratification. Holders can change their voting address during entry. Each entry review shows its voting address; minting assigns that address the voting power of all existing positions in the affected tiers.
 
-On a testnet, **Use short test schedule** explicitly sets entry to open in 2–3 minutes, with 10 minutes each for entry and observation. Changing networks preserves the dates you entered. **Recently opened** keeps up to 20 market links in this browser, including confirmed creations; opening a link reads its current chain state again.
+On a testnet, **Use short test schedule** sets entry to open in 2–3 minutes with 10 minutes for entry. It preserves the observation duration already entered, including applied time presets. An invalid duration shows an error without changing the dates. The form shows the resulting duration. Changing networks preserves the dates you entered. **Recently opened** keeps up to 20 market links in this browser, including confirmed creations; opening a link reads its current chain state again.
+
+Entry and observation dates are shown separately on each market. Paginated history is pinned to its original block; **Refresh to latest** restores current action availability. Scorecard history uses at most 500 blocks per Center request, with explicit continuation when a page cannot cover the full history. A failed request never means there are no scorecards.
 
 ## SIPmath downloads
 

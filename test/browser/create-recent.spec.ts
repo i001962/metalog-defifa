@@ -21,7 +21,7 @@ test('short testnet schedule is explicit and preserves the rest of the draft', a
   expect(start - before).toBeGreaterThanOrEqual(119_000)
   expect(start - before).toBeLessThanOrEqual(181_000)
   expect(close - start).toBe(600_000)
-  expect(end - close).toBe(600_000)
+  expect(end - close).toBe(Date.parse(`${original[2]}Z`) - Date.parse(`${original[1]}Z`))
   await expect(page.getByText('Scorecards still take at least 1 day to settle.', { exact: false })).toBeVisible()
   await network.selectOption('8453')
   await expect(preset).toHaveCount(0)

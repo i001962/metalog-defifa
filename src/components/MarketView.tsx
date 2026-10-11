@@ -44,13 +44,18 @@ export function MarketView({ chainId, projectId }: { chainId: number; projectId:
   if (!lifecycle && (query.isPending || query.isFetching)) return <p role="status">Loading market…</p>
   if (!lifecycle) return <><h1>Market unavailable</h1><p className="error" role="alert">{query.error?.message || 'No market data was returned.'}</p><button onClick={refresh}>Retry</button></>
   const market = lifecycle.market
-  const current = !query.isPlaceholderData && !query.error && !query.isFetching && !!query.data
+  const current = !page.blockNumber && !query.isPlaceholderData && !query.error && !!query.data
   const data = marketData(market)
   const distribution = data.positionDistribution
   return <><span className="eyebrow">{market.stage} / Game {market.projectId}</span><h1>{market.definition.prompt}</h1>
-    <p className="muted">{utcTime(market.definition.entryClosesAt)} → {utcTime(market.definition.resolvesAt)}</p>
+    <p className="muted">Entry: {utcTime(market.definition.entryOpensAt)} → {utcTime(market.definition.entryClosesAt)}<br />
+      Observation: {utcTime(market.definition.entryClosesAt)} → {utcTime(market.definition.resolvesAt)}</p>
     <MarketFacts definition={market.definition} />
-    <ForecastEditor key={`${chainId}:${projectId}`} definition={market.definition} market={market} onSubmitted={refresh} />
+    {!current && <div className="actions" role="status">
+      <span className="hint">{page.blockNumber ? `Historical snapshot at block ${page.blockNumber}.` : query.isFetching ? 'Checking latest market data…' : 'Latest market data is unavailable.'} Refresh to enable entry and market actions.</span>
+      <button type="button" disabled={query.isFetching} onClick={refresh}>Refresh to latest</button>
+    </div>}
+    <ForecastEditor key={`${chainId}:${projectId}`} definition={market.definition} market={market} current={current} onSubmitted={refresh} />
     <MarketLifecycle key={`play:${chainId}:${projectId}`} lifecycle={lifecycle} current={current}
       loading={query.isFetching} error={query.error?.message} onRefresh={refresh}
       onPage={(kind, cursor) => setPagination({ ...page, blockNumber: market.blockNumber, [kind === 'inventory' ? 'tokenCursor' : 'scorecardCursor']: cursor })}

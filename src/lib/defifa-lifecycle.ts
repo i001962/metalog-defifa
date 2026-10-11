@@ -15,6 +15,9 @@ export { SCORECARD_WEIGHT_TOTAL, scorecardWeightsFromPercentages, type TierWeigh
 const TOKEN_MULTIPLIER = 1_000_000_000n
 const TOKEN_PAGE_SIZE = 200
 const MAX_LOG_REQUESTS = 16
+// Center's hosted provider rejects wider windows with a generic -32005. Bound
+// requests up front; do not mistake that same code on a small request for a range limit.
+const MAX_LOG_BLOCKS = 500n
 const MAX_SCORECARDS_PER_PAGE = 100
 const STATE_NAMES = ['Pending', 'Active', 'Defeated', 'Succeeded', 'Queued', 'Ratified'] as const
 const ERC20_ABI = parseAbi(['function decimals() view returns (uint8)', 'event Transfer(address indexed from,address indexed to,uint256 value)'])
@@ -233,11 +236,11 @@ async function readScorecards(
   if (end < first) return { scorecards: [], next: null, complete: true }
   const event = getAbiItem({ abi: DEFIFA_ABI.DefifaGovernor, name: 'ScorecardSubmitted' })
   if (!event || event.type !== 'event') throw new Error('The scorecard event ABI is unavailable.')
-  // Ask for the whole indexed game history first. Reduce only an explicitly unsupported
-  // log range/result size; transport outages and rate limits remain errors. Accepted chunks
+  // Scan indexed game history in Center-compatible windows. Reduce only an explicitly
+  // unsupported log range/result size; transport outages and rate limits remain errors. Accepted chunks
   // are continued automatically, bounded by 16 RPC calls and 100 proposals per page.
   let nextEnd = end
-  let span = end - first + 1n
+  let span = end - first + 1n > MAX_LOG_BLOCKS ? MAX_LOG_BLOCKS : end - first + 1n
   const collected: Awaited<ReturnType<PublicClient['getLogs']>> = []
   let madeProgress = false
   for (let requests = 0; nextEnd >= first && requests < MAX_LOG_REQUESTS; requests++) {
@@ -261,7 +264,7 @@ async function readScorecards(
       span = span > 1n ? span / 2n : 1n
     }
   }
-  if (!madeProgress) throw new Error('This RPC’s log range limit could not be resolved within 16 requests. Use another RPC and retry.')
+  if (!madeProgress) throw new Error('Scorecard history could not be read within 16 Center requests. Try again later.')
   const logs = parseEventLogs({ abi: DEFIFA_ABI.DefifaGovernor, logs: collected, eventName: 'ScorecardSubmitted', strict: true })
     .sort((a, b) => a.blockNumber === b.blockNumber ? a.logIndex - b.logIndex : a.blockNumber < b.blockNumber ? -1 : 1)
   const read = readAt(client, market)

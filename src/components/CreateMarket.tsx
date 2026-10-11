@@ -14,6 +14,7 @@ import { RangePreview } from './RangePreview'
 import { RANGE_PRESETS, buildRangePreset, type RangePresetId } from '@/domain/range-presets'
 import { namedRanges, resizeRangeBoundaries, validateCustomRangeCount } from '@/domain/ranges'
 import { ASSET_PRESETS, WINDOW_PRESETS, buildObservationPreset } from '@/domain/observation-presets'
+import { shortTestSchedule } from '@/domain/schedule'
 
 const dateInput = (seconds: number) => new Date(seconds * 1000).toISOString().slice(0, 16)
 const seconds = (value: string) => Math.floor(Date.parse(`${value}Z`) / 1000)
@@ -28,6 +29,11 @@ export function CreateMarket({ now }: { now: number }) {
   const [open, setOpen] = useState(dateInput(now + 600))
   const [close, setClose] = useState(dateInput(now + 24 * 3600))
   const [end, setEnd] = useState(dateInput(now + 48 * 3600))
+  const [scheduleError, setScheduleError] = useState('')
+  const testSchedule = useMemo(() => {
+    try { return shortTestSchedule(now, seconds(close), seconds(end)) }
+    catch { return null }
+  }, [now, close, end])
   const [rangeCount, setRangeCount] = useState(String(DEFAULT_RANGE_COUNT))
   const [rangeWidth, setRangeWidth] = useState(String(DEFAULT_RANGE_WIDTH))
   const [rangeMode, setRangeMode] = useState<RangeMode>('simple')
@@ -165,14 +171,18 @@ export function CreateMarket({ now }: { now: number }) {
       setSource(preset.source)
       setRule(preset.resolutionRule)
       setObservationError('')
+      setScheduleError('')
     } catch (cause) { setObservationError(cause instanceof Error ? cause.message : 'Check the observation start.') }
   }
   function applyShortSchedule() {
     if (!isTestnet) return
-    const starts = Math.ceil(Date.now() / 60_000) * 60 + 120
-    setOpen(dateInput(starts))
-    setClose(dateInput(starts + 600))
-    setEnd(dateInput(starts + 1200))
+    try {
+      const schedule = shortTestSchedule(Date.now() / 1000, seconds(close), seconds(end))
+      setOpen(dateInput(schedule.entryOpensAt))
+      setClose(dateInput(schedule.entryClosesAt))
+      setEnd(dateInput(schedule.resolvesAt))
+      setScheduleError('')
+    } catch (cause) { setScheduleError(cause instanceof Error ? cause.message : 'Check the observation dates.') }
   }
   async function create(event: React.FormEvent) {
     event.preventDefault()
@@ -205,9 +215,9 @@ export function CreateMarket({ now }: { now: number }) {
     <label className="field"><span>Question</span><input placeholder="What will Bitcoin’s price change be over 24 hours?" maxLength={280} required value={prompt} onChange={event => setPrompt(event.target.value)} /></label>
     <div className="grid">
       <label className="field"><span>Entry opens (UTC)</span><input type="datetime-local" required value={open} onChange={event => setOpen(event.target.value)} /></label>
-      <label className="field"><span>Entry closes / observation starts (UTC)</span><input type="datetime-local" required value={close} onChange={event => setClose(event.target.value)} /></label>
+      <label className="field"><span>Entry closes / observation starts (UTC)</span><input type="datetime-local" required value={close} onChange={event => { setClose(event.target.value); setScheduleError('') }} /></label>
     </div>
-    <label className="field"><span>Observation ends (UTC)</span><input type="datetime-local" required value={end} onChange={event => setEnd(event.target.value)} /></label>
+    <label className="field"><span>Observation ends (UTC)</span><input type="datetime-local" required value={end} onChange={event => { setEnd(event.target.value); setScheduleError('') }} /></label>
     <label className="field"><span>Observation source</span><input placeholder="Source, instrument and exact observation to use" maxLength={500} required value={source} onChange={event => setSource(event.target.value)} /></label>
     <label className="field"><span>Observation rule</span><textarea maxLength={2000} required value={rule} onChange={event => setRule(event.target.value)} /><small>Specify timestamps, precision and what to do if the source is unavailable.</small></label>
     <label className="field"><span id="default-delegate-label">Oracle</span><input aria-labelledby="default-delegate-label" aria-describedby="default-delegate-help" placeholder="0x… (optional)" autoComplete="off" spellCheck={false} value={delegate} aria-invalid={Boolean(delegateDraft.error)} onChange={event => setDelegate(event.target.value)} /><small id="default-delegate-help">Receives voting power from market positions. Leave blank to keep it with position holders. Holders can change their voting address while entries are open.</small>{delegateDraft.error && <small className="error" role="alert">{delegateDraft.error}</small>}</label>
@@ -270,7 +280,7 @@ export function CreateMarket({ now }: { now: number }) {
     <details><summary>View ranges</summary>{rangeError && <p className="hint">Showing the last valid ranges.</p>}<div className="table-wrap"><table><thead><tr><th>NFT tier</th><th>Range</th></tr></thead><tbody>{ranges.map(range => <tr key={range.tierId}><td>{range.tierId}</td><td>{range.label}</td></tr>)}</tbody></table></div></details>
     <div className="section">
       <label className="field"><span>Network</span><select className="network-select" value={chainId} onChange={event => setChainId(Number(event.target.value))}>{SUPPORTED_CHAINS.map(chain => <option key={chain.id} value={chain.id}>{chain.name}</option>)}</select></label>
-      {isTestnet && <div className="field"><div><button type="button" onClick={applyShortSchedule}>Use short test schedule</button></div><small>Opens in 2–3 minutes, then 10 minutes each for entry and observation. Scorecards still take at least 1 day to settle.</small></div>}
+      {isTestnet && <div className="field"><div><button type="button" onClick={applyShortSchedule}>Use short test schedule</button></div><small>{testSchedule ? <>Opens in 2–3 minutes, with 10 minutes for entry and {(testSchedule.resolvesAt - testSchedule.entryClosesAt) / 60} minutes for observation.</> : 'Preserves the observation duration entered above.'} Scorecards still take at least 1 day to settle.</small>{scheduleError && <small className="error" role="alert">{scheduleError}</small>}</div>}
       <p className="hint">Payouts follow the ratified scorecard. Entry can be refunded while minting is open.</p>
       <div className="actions">
         <button type="submit" className="primary" disabled={busy || transactions.busy || Boolean(transactions.pending) || Boolean(rangeError || delegateDraft.error)}>{busy ? 'Preparing market…' : !wallet.address ? 'Connect to create' : wallet.isSigna ? 'Use external wallet to create' : 'Review market'}</button>
