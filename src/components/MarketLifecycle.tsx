@@ -28,6 +28,7 @@ export function MarketLifecycle({ lifecycle, current, loading, error, onRefresh,
   const [recipient, setRecipient] = useState('')
   const [delegatee, setDelegatee] = useState('')
   const [percentages, setPercentages] = useState(() => market.ranges.map(() => '0'))
+  const [resultView, setResultView] = useState<'weighted' | 'one-range'>('weighted')
   const [scoreTouched, setScoreTouched] = useState(false)
   const [preparing, setPreparing] = useState(false)
   const [actionError, setActionError] = useState('')
@@ -197,18 +198,25 @@ export function MarketLifecycle({ lifecycle, current, loading, error, onRefresh,
       </div>
       {!lifecycle.scorecardsComplete && <p className="hint">Only part of the results history is shown.</p>}
       <details><summary>Propose a result</summary>
-        <label className="field"><span>Propose one range</span><select value="" onChange={event => {
+        <div className="mode-toggle" role="group" aria-label="Result payout controls">
+          <button type="button" aria-pressed={resultView === 'weighted'} onClick={() => setResultView('weighted')}>Weighted</button>
+          <button type="button" aria-pressed={resultView === 'one-range'} onClick={() => setResultView('one-range')}>One range</button>
+        </div>
+        <p className="hint">Assign payout percentages across ranges. They must total exactly 100%. Holders still decide whether to ratify the result.</p>
+        {resultView === 'one-range' ? <><label className="field"><span>Propose one range</span><select value="" onChange={event => {
           if (!event.target.value) return
           setPercentages(market.ranges.map(range => String(range.tierId) === event.target.value ? '100' : '0'))
           setScoreTouched(true)
         }}><option value="">Choose a range to assign 100%</option>
           {market.ranges.filter(range => BigInt(market.tiers.find(tier => tier.tierId === range.tierId)?.supply ?? '0') > 0n).map(range => <option key={range.tierId} value={range.tierId}>{range.label}</option>)}
-        </select></label>
-        <p className="hint">This fills a proposal. Edit its percentages below; holders still decide whether to ratify it.</p>
-        <div className="table-wrap"><table><thead><tr><th>Range</th><th>Proposed payout (%)</th></tr></thead><tbody>
+        </select></label><p className="hint">Choosing a range replaces the draft with 100% for that range. Switching views keeps your draft.</p></>
+        : <div className="table-wrap"><table><thead><tr><th>Range</th><th>Proposed payout (%)</th></tr></thead><tbody>
           {market.ranges.map((range, index) => <tr key={range.tierId}><td>{range.label}</td><td><input className="quantity-input" inputMode="decimal" aria-label={`Proposed payout for ${range.label} (%)`}
             value={percentages[index]} onChange={event => { setPercentages(previous => previous.map((value, i) => i === index ? event.target.value : value)); setScoreTouched(true) }} /></td></tr>)}
-        </tbody></table></div>
+        </tbody></table></div>}
+        {scoreDraft.weights && <div className="table-wrap"><table aria-label="Proposed payout summary"><thead><tr><th>Range</th><th>Proposed payout</th></tr></thead><tbody>
+          {scoreDraft.weights.map(item => <tr key={item.tierId}><td>{market.ranges.find(range => range.tierId === item.tierId)?.label}</td><td>{formatUnits(BigInt(item.weight), 16)}%</td></tr>)}
+        </tbody></table></div>}
         {scoreTouched && scoreDraft.error && <p className="error" role="alert">{scoreDraft.error}</p>}
         {matchingWallet && !lifecycle.canSubmitScorecard && <p className="hint">Result proposals are unavailable in this phase.</p>}
         <div className="actions"><button type="button" disabled={!canAct || !lifecycle.canSubmitScorecard || !scoreDraft.weights}

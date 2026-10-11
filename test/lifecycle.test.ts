@@ -313,11 +313,13 @@ describe('receipt effects and reload recovery', () => {
     await expect(verifyLifecycleReceipt(tx, receipt([log('DefifaHook', other, 'Transfer', { from: account, to: other, tokenId: firstId })]))).rejects.toThrow('reviewed NFT transfer')
   })
 
-  it('requires the exact native scorecard event and rejects forged/re-targeted recovery', async () => {
+  it.each([{ percentages: ['100', '0', '0'] }, { percentages: ['50', '30', '20'] }])('requires the exact native scorecard event for $percentages and rejects forged/re-targeted recovery', async ({ percentages }) => {
     market.phase = 3
-    const weights = scorecardWeightsFromPercentages(market.ranges, ['100', '0', '0'])
+    const weights = scorecardWeightsFromPercentages(market.ranges, percentages)
     const tx = await prepareLifecycleAction(market, { kind: 'submit-scorecard', weights }, account)
-    const event = log('DefifaGovernor', d.governor, 'ScorecardSubmitted', { gameId: 7n, scorecardId: 123n, tierWeights: [{ id: 1n, cashOutWeight: SCORECARD_WEIGHT_TOTAL }], isDefaultAttestationDelegate: false, caller: account })
+    const nativeWeights = weights.map(item => ({ id: BigInt(item.tierId), cashOutWeight: BigInt(item.weight) }))
+    expect(decodeFunctionData({ abi: DEFIFA_ABI.DefifaGovernor, data: tx.data }).args).toEqual([7n, nativeWeights])
+    const event = log('DefifaGovernor', d.governor, 'ScorecardSubmitted', { gameId: 7n, scorecardId: 123n, tierWeights: nativeWeights, isDefaultAttestationDelegate: false, caller: account })
     await expect(verifyLifecycleReceipt(tx, receipt([event]))).resolves.toBeUndefined()
     await expect(verifyLifecycleReceipt(tx, receipt([{ ...event, address: other }]))).rejects.toThrow('complete reviewed result')
     await expect(verifyLifecycleReceipt({ ...tx, value: 1n }, receipt([event]))).rejects.toThrow('native lifecycle')
@@ -342,15 +344,18 @@ describe('receipt effects and reload recovery', () => {
     await expect(verifyLifecycleReceipt(tx, receipt([burn, cash(99n)]))).rejects.toThrow('reviewed reclaim')
   })
 
-  it('checks ratification, full stored scorecard and atomic fulfillment together', async () => {
+  it.each([{ percentages: ['100', '0', '0'] }, { percentages: ['50', '30', '20'] }])('checks ratification for $percentages, full stored scorecard and atomic fulfillment together', async ({ percentages }) => {
     market.phase = 3; state = 3
-    const weights = scorecardWeightsFromPercentages(market.ranges, ['100', '0', '0'])
+    const weights = scorecardWeightsFromPercentages(market.ranges, percentages)
     const tx = await prepareLifecycleAction(market, { kind: 'ratify', weights }, account)
+    expect(decodeFunctionData({ abi: DEFIFA_ABI.DefifaGovernor, data: tx.data }).args).toEqual([
+      7n, weights.map(item => ({ id: BigInt(item.tierId), cashOutWeight: BigInt(item.weight) })),
+    ])
     market.phase = 4; market.commitmentsFulfilled = true; market.ratifiedScorecardId = '123'
-    market.ratifiedWeights = [{ tierId: 1, weight: SCORECARD_WEIGHT_TOTAL.toString() }, { tierId: 2, weight: '0' }, { tierId: 3, weight: '0' }]
+    market.ratifiedWeights = market.ranges.map(range => ({ tierId: range.tierId, weight: weights.find(item => item.tierId === range.tierId)?.weight ?? '0' }))
     const result = receipt([
       log('DefifaGovernor', d.governor, 'ScorecardRatified', { gameId: 7n, scorecardId: 123n, caller: account }),
-      log('DefifaHook', hook, 'TierCashOutWeightsSet', { tierWeights: [{ id: 1n, cashOutWeight: SCORECARD_WEIGHT_TOTAL }], caller: d.governor }),
+      log('DefifaHook', hook, 'TierCashOutWeightsSet', { tierWeights: weights.map(item => ({ id: BigInt(item.tierId), cashOutWeight: BigInt(item.weight) })), caller: d.governor }),
     ])
     await expect(verifyLifecycleReceipt(tx, result)).resolves.toBeUndefined()
     market.commitmentsFulfilled = false
