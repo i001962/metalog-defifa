@@ -11,7 +11,7 @@ import {
 } from '../domain/market'
 import { formatPercentage, RANGE_DECIMAL_PLACES, type RangeBin } from '../domain/ranges'
 import {
-  assertChain, assertGameClone, contractRead, DEFIFA_ABI, deploymentForChain, sameAddress, verifyDefifaDeployment,
+  assertChain, assertGameClone, contractRead, DEFIFA_ABI, deploymentForChain, sameAddress, TOKEN_MULTIPLIER, verifyDefifaDeployment,
 } from './defifa-deployment'
 import { loadMarketMetadata, publishMarketMetadata, type PublishedMarketMetadata } from './market-metadata'
 import type { PreparedTransaction } from './transaction'
@@ -280,7 +280,7 @@ function verifyEntryReceipt(hook: Address, owner: Address, tierIds: number[], re
     .filter(log => sameAddress(log.address, hook))
     .map(log => log.args as { from: Address; to: Address; tokenId: bigint })
     .filter(log => sameAddress(log.from, zeroAddress) && sameAddress(log.to, owner))
-  const actualIds = transfers.map(log => Number(log.tokenId / 1_000_000_000n)).sort((left, right) => left - right)
+  const actualIds = transfers.map(log => Number(log.tokenId / TOKEN_MULTIPLIER)).sort((left, right) => left - right)
   if (receipt.status !== 'success' || JSON.stringify(actualIds) !== JSON.stringify(tierIds)) {
     throw new Error('The receipt does not confirm the complete reviewed NFT allocation.')
   }

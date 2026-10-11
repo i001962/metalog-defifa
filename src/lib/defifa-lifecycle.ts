@@ -5,19 +5,18 @@ import {
 } from 'viem'
 import { createHookMetadata, hookMetadataId } from '@bananapus/nana-sdk-core'
 import { NATIVE_TOKEN, projectNumber, readMarketAt, signer, type MarketSnapshot } from './defifa'
-import { assertChain, contractRead, DEFIFA_ABI, deploymentForChain, sameAddress, verifyDefifaDeployment } from './defifa-deployment'
+import { assertChain, contractRead, DEFIFA_ABI, deploymentForChain, sameAddress, TOKEN_MULTIPLIER, verifyDefifaDeployment } from './defifa-deployment'
 import { publicClientForChain } from './wallet'
+import { firstBlockAtTimestamp, MAX_LOG_BLOCKS } from './history-blocks'
 import type { PreparedTransaction } from './transaction'
 import { SCORECARD_WEIGHT_TOTAL, type TierWeight } from '../domain/scorecard'
 import { MAX_POSITIONS } from '../domain/allocation'
 export { SCORECARD_WEIGHT_TOTAL, scorecardWeightsFromPercentages, type TierWeight } from '../domain/scorecard'
 
-const TOKEN_MULTIPLIER = 1_000_000_000n
 const TOKEN_PAGE_SIZE = 200
 const MAX_LOG_REQUESTS = 16
 // Center's hosted provider rejects wider windows with a generic -32005. Bound
 // requests up front; do not mistake that same code on a small request for a range limit.
-import { firstBlockAtTimestamp, MAX_LOG_BLOCKS } from './history-blocks'
 const MAX_SCORECARDS_PER_PAGE = 100
 const STATE_NAMES = ['Pending', 'Active', 'Defeated', 'Succeeded', 'Queued', 'Ratified'] as const
 const ERC20_ABI = parseAbi(['function decimals() view returns (uint8)', 'event Transfer(address indexed from,address indexed to,uint256 value)'])
