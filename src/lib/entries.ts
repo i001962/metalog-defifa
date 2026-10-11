@@ -1,7 +1,7 @@
 import { decodeFunctionData, getAbiItem, parseEventLogs, zeroAddress, type Address, type Hex, type PublicClient, type TransactionReceipt } from 'viem'
 import type { Coefficients } from '../domain/distribution'
 import { decodeEntryMemo, NATIVE_TOKEN, projectNumber, verifyRecordedEntry, type MarketSnapshot } from './defifa'
-import { assertChain, DEFIFA_ABI, deploymentForChain, sameAddress } from './defifa-deployment'
+import { assertChain, DEFIFA_ABI, deploymentForChain, sameAddress, TOKEN_MULTIPLIER } from './defifa-deployment'
 import { firstBlockAtTimestamp, MAX_LOG_BLOCKS } from './history-blocks'
 
 export type EntryHistoryEntry = {
@@ -109,7 +109,7 @@ export async function readEntryHistory(client: PublicClient, market: MarketSnaps
         || !mints.some(mint => mint.tokenId === (log.args as Mint).tokenId)) {
         throw new Error('The entry receipt does not prove its discovered mint.')
       }
-      const quantities = market.ranges.map(range => mints.filter(mint => mint.tokenId / 1_000_000_000n === BigInt(range.tierId)).length)
+      const quantities = market.ranges.map(range => mints.filter(mint => mint.tokenId / TOKEN_MULTIPLIER === BigInt(range.tierId)).length)
       const entry: EntryHistoryEntry = { status: 'unsupported', transactionHash: receipt.transactionHash,
         blockNumber: receipt.blockNumber.toString(), timestamp, account: transaction.from,
         beneficiary: mints.every(mint => sameAddress(mint.to, mints[0].to)) ? mints[0].to : null, stakeWei: null, tokenIds, quantities, coefficients: null }
@@ -125,7 +125,7 @@ export async function readEntryHistory(client: PublicClient, market: MarketSnaps
       const [id, token, amount, beneficiary, minimum, memoText, metadata] = call.args as readonly [bigint, Address, bigint, Address, bigint, string, Hex]
       if (id !== projectNumber(market.projectId) || !sameAddress(token, NATIVE_TOKEN) || amount !== transaction.value
         || minimum !== 0n || quantities.reduce((sum, quantity) => sum + quantity, 0) !== mints.length
-        || mints.some(mint => !sameAddress(mint.to, beneficiary) || mint.tokenId % 1_000_000_000n === 0n)) {
+        || mints.some(mint => !sameAddress(mint.to, beneficiary) || mint.tokenId % TOKEN_MULTIPLIER === 0n)) {
         entry.status = 'invalid'; entry.reason = 'The payment and minted positions do not match this market.'; continue
       }
       entry.beneficiary = beneficiary
