@@ -11,6 +11,7 @@ import { useWallet } from '@/providers/Providers'
 import { ForecastEditor } from './ForecastEditor'
 import { MarketFacts, utcTime } from './MarketFacts'
 import { MarketLifecycle } from './MarketLifecycle'
+import { Entries } from './Entries'
 
 export function MarketView({ chainId, projectId }: { chainId: number; projectId: string }) {
   const { address } = useWallet()
@@ -40,6 +41,7 @@ export function MarketView({ chainId, projectId }: { chainId: number; projectId:
   function refresh() {
     setPagination({ scope })
     void queryClient.invalidateQueries({ queryKey: ['market-play', chainId, projectId] })
+    void queryClient.invalidateQueries({ queryKey: ['market-entries', chainId, projectId] })
   }
   if (!lifecycle && (query.isPending || query.isFetching)) return <p role="status">Loading market…</p>
   if (!lifecycle) return <><h1>Market unavailable</h1><p className="error" role="alert">{query.error?.message || 'No market data was returned.'}</p><button onClick={refresh}>Retry</button></>
@@ -60,6 +62,7 @@ export function MarketView({ chainId, projectId }: { chainId: number; projectId:
       loading={query.isFetching} error={query.error?.message} onRefresh={refresh}
       onPage={(kind, cursor) => setPagination({ ...page, blockNumber: market.blockNumber, [kind === 'inventory' ? 'tokenCursor' : 'scorecardCursor']: cursor })}
       inventoryPaged={!!page.tokenCursor} scorecardsPaged={!!page.scorecardCursor} />
+    <Entries key={`entries:${chainId}:${projectId}`} market={market} />
     <section><div className="row"><h2>Stake-weighted positions</h2><div className="inline">
       <a href={`/api/markets/${chainId}/${projectId}`}>JSON</a>
       <a href={`/api/markets/${chainId}/${projectId}?format=sipmath`}>SIPmath</a>

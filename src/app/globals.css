@@ -139,6 +139,8 @@ dialog .actions { justify-content: flex-end; }
 .distribution-overflow { display: flex; flex-wrap: wrap; gap: 4px 18px; margin-block: 6px 14px; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
 .inventory-table input[type="checkbox"] { width: 20px; height: 20px; margin: 0; vertical-align: middle; }
 .scorecard summary { overflow-wrap: anywhere; }
+.entry-record { padding-block: 12px; border-top: 1px solid var(--line); }
+.entry-record summary, .entry-coefficients { overflow-wrap: anywhere; }
 
 .range-preview-finite { position: relative; padding-top: 12px; }
 .range-preview-numbers { position: absolute; top: 24px; inset-inline: 0; pointer-events: none; font-size: 12px; }

@@ -187,6 +187,7 @@ export function CreateMarket({ now }: { now: number }) {
   async function create(event: React.FormEvent) {
     event.preventDefault()
     setShowValidation(true)
+    setError('')
     if (!draft.definition) return
     if (!wallet.address) { wallet.connect(); return }
     if (wallet.isSigna) { wallet.connect({ externalOnly: true }); return }
@@ -205,7 +206,15 @@ export function CreateMarket({ now }: { now: number }) {
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Market could not be prepared.') }
     finally { setBusy(false) }
   }
-  return <form className="form-narrow" onSubmit={create}>
+  return <form className="form-narrow" onSubmit={create} onChange={() => setError('')} onInvalid={event => {
+    // Native constraints run before onSubmit, including required date inputs.
+    // Keep that rejection visible beside the action as well as at the field.
+    const field = event.target as HTMLInputElement
+    if (field !== event.currentTarget.querySelector(':invalid')) return
+    const label = field.labels?.[0]?.querySelector('span')?.textContent ?? 'Market details'
+    setError(`${label}: ${field.validationMessage}`)
+    setShowValidation(true)
+  }}>
     <h1>Create market</h1>
     <div className="forecast-moments">
       <label className="field"><span>Asset preset</span><select className="network-select" value={assetPreset} onChange={event => setAssetPreset(event.target.value)}><option value="custom">Custom</option>{ASSET_PRESETS.map(preset => <option key={preset.id} value={preset.id}>{preset.label}</option>)}</select></label>
@@ -286,6 +295,7 @@ export function CreateMarket({ now }: { now: number }) {
         <button type="submit" className="primary" disabled={busy || transactions.busy || Boolean(transactions.pending) || Boolean(rangeError || delegateDraft.error)}>{busy ? 'Preparing market…' : !wallet.address ? 'Connect to create' : wallet.isSigna ? 'Use external wallet to create' : 'Review market'}</button>
         <button type="button" disabled={!draft.definition} onClick={() => draft.definition && downloadJson(draft.definition, 'metalog-market.json')}>Download definition</button>
       </div>
+      {transactions.pending && <p className="hint" role="status">Check the pending transaction below before creating another market.</p>}
       {(error || (showValidation && draft.error && draft.error !== rangeError && draft.error !== delegateDraft.error)) && <p className="error" role="alert" style={{ marginTop: 14 }}>{error || draft.error}</p>}
     </div>
   </form>

@@ -7,13 +7,14 @@ import { binForOutcome, formatPercentage, type RangeBin } from '@/domain/ranges'
 
 const HEIGHT = 290, LEFT = 48, RIGHT = 18, TOP = 24, BOTTOM = 51
 
-export function PositionChart({ ranges, quantities, coefficients, onChange, readOnly = false, reference = false }: {
+export function PositionChart({ ranges, quantities, coefficients, onChange, readOnly = false, reference = false, submitted = false }: {
   ranges: RangeBin[]
   quantities: number[]
   coefficients: Coefficients
   onChange?: (value: Coefficients) => void
   readOnly?: boolean
   reference?: boolean
+  submitted?: boolean
 }) {
   const element = useRef<SVGSVGElement>(null)
   const descriptionId = useId()
@@ -25,7 +26,7 @@ export function PositionChart({ ranges, quantities, coefficients, onChange, read
     return () => observer.disconnect()
   }, [])
   const drag = useRef<{ x: number; y: number; width: number; moved: boolean; coefficients: Coefficients } | null>(null)
-  const interactive = !readOnly && onChange !== undefined
+  const interactive = !readOnly && !submitted && onChange !== undefined
   const positions = useMemo(() => {
     try { return positionDensities(ranges, quantities) }
     catch { return null }
@@ -49,7 +50,7 @@ export function PositionChart({ ranges, quantities, coefficients, onChange, read
   const line = density?.buckets.map((bucket, index) => `${index ? 'L' : 'M'}${x(bucket.lower)},${y(bucket.density)} L${x(bucket.upper)},${y(bucket.density)}`).join(' ') ?? ''
   const selected = finite.find(position => position.range.tierId === selectedTier) ?? finite[Math.floor(finite.length / 2)]
   const describe = (position: NonNullable<typeof positions>[number]) => `${position.range.label}: ${position.quantity} NFTs (${(position.share * 100).toFixed(2)}%)`
-  const instruction = readOnly ? 'Showing the last valid allocation while you edit.'
+  const instruction = submitted ? 'Submitted curve and minted positions.' : readOnly ? 'Showing the last valid allocation while you edit.'
     : interactive ? 'Drag to move the curve. Drag up to widen, down to narrow.' : 'Edit NFT counts in By range.'
   const ticks = width < 520 ? [0, .5, 1] : [0, .25, .5, .75, 1]
 
@@ -68,7 +69,7 @@ export function PositionChart({ ranges, quantities, coefficients, onChange, read
 
   return <>
     <svg ref={element} className="chart" style={interactive ? undefined : { cursor: 'default', touchAction: 'auto', userSelect: 'auto' }}
-      viewBox={`0 0 ${width} ${HEIGHT}`} role="img" aria-label="Your probability distribution" tabIndex={0} aria-describedby={descriptionId}
+      viewBox={`0 0 ${width} ${HEIGHT}`} role="img" aria-label={submitted ? 'Submitted curve and minted positions' : 'Your probability distribution'} tabIndex={0} aria-describedby={descriptionId}
       onPointerDown={event => {
         selectAt(event.clientX)
         if (!interactive || event.button !== 0) return
@@ -93,7 +94,7 @@ export function PositionChart({ ranges, quantities, coefficients, onChange, read
         if (event.shiftKey || ['ArrowUp', 'ArrowDown'].includes(event.key)) transform(coefficients, 0, ['ArrowUp', 'ArrowRight'].includes(event.key) ? 1.05 : 1 / 1.05)
         else transform(coefficients, span * (event.key === 'ArrowLeft' ? -.015 : .015), 1)
       }}>
-      <title>Your probability distribution</title>
+      <title>{submitted ? 'Submitted curve and minted positions' : 'Your probability distribution'}</title>
       <desc id={descriptionId}>{`Bars show NFT share divided by range width; the line shows ${reference ? 'reference ' : ''}curve density. Focus or tap a range for its exact count and share. ${interactive ? 'Drag to move or widen the curve. Arrow keys move; Shift and arrow keys change spread.' : instruction}`}</desc>
       {finite.map(position => {
         const { range } = position
