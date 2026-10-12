@@ -45,6 +45,8 @@ Manual counts are dense, non-negative safe integers in canonical range order, to
 
 ## Lifecycle
 
+The shared SDK owns native pay/cash-out metadata encoding and bounded cumulative-mint holdings discovery. Metalog passes its explicit configured delegate (or beneficiary), verified implementation/hook and pinned block; its holdings adapter preserves the existing 200-candidate pages and serialized cursor/output. Market allocation, mint/receipt verification, lifecycle decisions and recovery remain Metalog owners.
+
 | Product phase | Defifa evidence | User-facing meaning |
 | --- | --- | --- |
 | Countdown | Future mint opening | Inspect rules and prepare a curve |

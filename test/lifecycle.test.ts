@@ -4,15 +4,15 @@ import {
   encodeErrorResult, encodeEventTopics, getAbiItem, getAddress, zeroAddress,
   parseAbi, type Abi, type Address, type Hex, type TransactionReceipt,
 } from 'viem'
-import { hookMetadataId } from '@bananapus/nana-sdk-core'
+import { createHookMetadata, hookMetadataId } from '@bananapus/nana-sdk-core'
 import { createRanges } from '../src/domain/ranges'
 import { SCORECARD_WEIGHT_TOTAL, scorecardWeightsFromPercentages } from '../src/domain/scorecard'
 import { DEFIFA_ABI, deploymentForChain, NATIVE_TOKEN, type MarketSnapshot } from '../src/lib/defifa'
 import { prepareLifecycleAction, readCashOutQuote, readLifecycle, verifyLifecycleReceipt, type LifecycleAction } from '../src/lib/defifa-lifecycle'
 import { verifyDefifaDeployment } from '../src/lib/defifa-deployment'
 
-const mocks = vi.hoisted(() => ({ getBlock: vi.fn(), getChainId: vi.fn(), readContract: vi.fn(), getLogs: vi.fn(), simulateContract: vi.fn(), readMarketAt: vi.fn() }))
-vi.mock('../src/lib/wallet', () => ({ publicClientForChain: () => mocks, SUPPORTED_CHAINS: [{ id: 8453 }] }))
+const mocks = vi.hoisted(() => ({ getBlock: vi.fn(), getChainId: vi.fn(), getBytecode: vi.fn(), readContract: vi.fn(), getLogs: vi.fn(), simulateContract: vi.fn(), readMarketAt: vi.fn() }))
+vi.mock('../src/lib/wallet', () => ({ publicClientForChain: () => mocks, chainForId: (id: number) => ({ id }), SUPPORTED_CHAINS: [{ id: 8453 }] }))
 vi.mock('../src/lib/defifa', async importOriginal => ({ ...await importOriginal<typeof import('../src/lib/defifa')>(), readMarketAt: mocks.readMarketAt }))
 vi.mock('../src/lib/defifa-deployment', async importOriginal => {
   const actual = await importOriginal<typeof import('../src/lib/defifa-deployment')>()
@@ -81,6 +81,7 @@ beforeEach(() => {
     ratifiedScorecardId: null, ratifiedWeights: null, cashOutWeightTotal: SCORECARD_WEIGHT_TOTAL.toString(), commitmentsFulfilled: false, noContestTriggered: false,
   }
   mocks.getChainId.mockResolvedValue(chainId)
+  mocks.getBytecode.mockResolvedValue(`0x363d3d373d3d3d363d73${d.implementation.slice(2)}5af43d82803e903d91602b57fd5bf3`)
   mocks.getBlock.mockImplementation(async (args?: { blockNumber?: bigint }) => {
     const number = args?.blockNumber ?? head
     return { number, timestamp: BigInt(now) - (head - number) * 2n }
@@ -88,10 +89,21 @@ beforeEach(() => {
   mocks.readMarketAt.mockImplementation(async (_client, _chain, _id, blockNumber: bigint, timestamp: number) => ({ ...market, blockNumber: blockNumber.toString(), blockTimestamp: timestamp }))
   mocks.getLogs.mockImplementation(async ({ fromBlock, toBlock }: { fromBlock: bigint; toBlock: bigint }) => blockLogs.filter(item => item.blockNumber !== null && item.blockNumber >= fromBlock && item.blockNumber <= toBlock))
   mocks.simulateContract.mockImplementation(async () => ({ result: reclaim }))
-  mocks.readContract.mockImplementation(async ({ functionName, args }: { functionName: string; args: readonly unknown[] }) => {
+  mocks.readContract.mockImplementation(async ({ address, functionName, args }: { address: string; functionName: string; args: readonly unknown[] }) => {
     switch (functionName) {
       case 'projectId': return 7n
+      case 'currentRulesetOf': return [{ id: 10n }, { dataHook: hook, useDataHookForPay: true }]
+      case 'store': return d.store
+      case 'CODE_ORIGIN': return d.implementation
+      case 'gamePhaseReporter': case 'gamePotReporter': return d.deployer
+      case 'pricingCurrency': return 61166n
+      case 'contractURI': return 'ipfs://native-test-collection'
+      case 'currentGamePotOf': return [BigInt(market.potWei), NATIVE_TOKEN, 18n]
+      case 'currentGamePhaseOf': return market.phase
+      case 'tierNameOf': return market.ranges.find(range => BigInt(range.tierId) === args[0])!.label
+      case 'currentSupplyOfTier': return 1n
       case 'ownerOf': {
+        if (address.toLowerCase() === d.projects.toLowerCase()) return d.deployer
         const owner = owners.get(String(args[0]))
         if (!owner) throw burned(BigInt(args[0] as bigint))
         return owner
@@ -136,6 +148,9 @@ describe('native lifecycle preparation', () => {
     const metadata = decoded.args![6] as Hex
     expect(metadata.slice(2, 130)).toContain(hookMetadataId(d.implementation, 'cashOut').slice(2).toLowerCase())
     expect(decodeAbiParameters([{ type: 'uint256[]' }], `0x${metadata.slice(130)}`)[0]).toEqual([firstId, 2_000_000_001n])
+    expect(metadata).toBe(createHookMetadata([hookMetadataId(d.implementation, 'cashOut')], [
+      encodeAbiParameters([{ type: 'uint256[]' }], [[firstId, 2_000_000_001n]]),
+    ]))
     reclaim = 99n
     await expect(tx.reverify!()).rejects.toThrow('below the reviewed minimum')
   })

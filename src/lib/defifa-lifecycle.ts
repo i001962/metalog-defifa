@@ -1,12 +1,12 @@
 import {
-  BaseError, ContractFunctionRevertedError, decodeAbiParameters, encodeAbiParameters,
+  decodeAbiParameters,
   encodeFunctionData, getAbiItem, parseAbi, parseEventLogs, zeroAddress,
   type Address, type Hex, type PublicClient, type TransactionReceipt,
 } from 'viem'
-import { createHookMetadata, hookMetadataId } from '@bananapus/nana-sdk-core'
+import { build721CashOutMetadata, getDefifaHoldings } from '@bananapus/nana-sdk-core/v6'
 import { NATIVE_TOKEN, projectNumber, readMarketAt, signer, type MarketSnapshot } from './defifa'
 import { assertChain, contractRead, DEFIFA_ABI, deploymentForChain, sameAddress, TOKEN_MULTIPLIER, verifyDefifaDeployment } from './defifa-deployment'
-import { publicClientForChain } from './wallet'
+import { chainForId, publicClientForChain } from './wallet'
 import { firstBlockAtTimestamp, MAX_LOG_BLOCKS } from './history-blocks'
 import type { PreparedTransaction } from './transaction'
 import { decodeDefifaTransactionCall } from './transaction-scope'
@@ -147,53 +147,17 @@ async function assertOwned(client: PublicClient, market: MarketSnapshot, ids: re
   if (owners.some(owner => !sameAddress(owner, account))) throw new Error('Your wallet no longer owns every selected NFT.')
 }
 
-function nonexistentToken(error: unknown): boolean {
-  if (!(error instanceof BaseError)) return false
-  const revert = error.walk(cause => cause instanceof ContractFunctionRevertedError)
-  return revert instanceof ContractFunctionRevertedError && revert.data?.errorName === 'ERC721NonexistentToken'
-}
-
 async function readInventory(client: PublicClient, market: MarketSnapshot, account: Address | null, cursor?: string) {
-  const empty = { tokens: [] as OwnedPosition[], totalOwned: '0', totalCandidates: '0', nextCursor: null, complete: true }
-  if (!account) return empty
-  const read = readAt(client, market)
-  const d = deploymentForChain(market.chainId)
-  const [owned, tiers] = await Promise.all([
-    read<bigint>(market.hook, 'DefifaHook', 'balanceOf', [account]),
-    read<{ id: number; initialSupply: number; remainingSupply: number }[]>(
-      d.store, 'JB721TiersHookStore', 'tiersOf', [market.hook, [], false, 0n, 128n],
-    ),
-  ])
-  // Store.recordBurn only increments numberOfBurnedFor. It never refills remainingSupply:
-  // initialSupply - remainingSupply therefore enumerates every ID ever minted, including burns.
-  const minted = tiers.map(tier => ({ tierId: Number(tier.id), count: BigInt(tier.initialSupply) - BigInt(tier.remainingSupply) }))
-  if (minted.some(tier => tier.count < 0n)) throw new Error('The NFT supply returned an invalid count.')
-  const total = minted.reduce((sum, tier) => sum + tier.count, 0n)
-  const start = cursor === undefined ? 0n : uint(cursor, 'inventory cursor')
-  if (start > total) throw new Error('The inventory cursor is outside this snapshot.')
-  if (owned === 0n) return { ...empty, totalCandidates: total.toString() }
-  const end = start + BigInt(TOKEN_PAGE_SIZE) < total ? start + BigInt(TOKEN_PAGE_SIZE) : total
-  const candidates: OwnedPosition[] = []
-  let offset = 0n
-  for (const tier of minted) {
-    const low = start > offset ? start - offset : 0n
-    const high = end < offset + tier.count ? end - offset : tier.count
-    for (let i = low; i < high; i++) candidates.push({ tierId: tier.tierId, tokenId: (BigInt(tier.tierId) * TOKEN_MULTIPLIER + i + 1n).toString() })
-    offset += tier.count
-    if (offset >= end) break
+  if (!account) return { tokens: [] as OwnedPosition[], totalOwned: '0', totalCandidates: '0', nextCursor: null, complete: true }
+  const holdings = await getDefifaHoldings(client, {
+    chainId: chainForId(market.chainId).id, projectId: projectNumber(market.projectId), account,
+    expectedHook: market.hook, blockNumber: BigInt(market.blockNumber), cursor, limit: TOKEN_PAGE_SIZE,
+  })
+  return {
+    tokens: holdings.tokens.map(token => ({ tokenId: token.tokenId.toString(), tierId: token.tierId })),
+    totalOwned: holdings.totalOwned.toString(), totalCandidates: holdings.totalCandidates.toString(),
+    nextCursor: holdings.nextCursor, complete: holdings.complete,
   }
-  const checks = await Promise.all(candidates.map(async token => {
-    try {
-      return sameAddress(await read<Address>(market.hook, 'DefifaHook', 'ownerOf', [BigInt(token.tokenId)]), account) ? token : null
-    } catch (error) {
-      // A confirmed burned ID is not an RPC outage. Only this decoded native error is omitted.
-      if (nonexistentToken(error)) return null
-      throw error
-    }
-  }))
-  const tokens = checks.filter((token): token is OwnedPosition => token !== null)
-  const complete = end === total || (start === 0n && BigInt(tokens.length) === owned)
-  return { tokens, totalOwned: owned.toString(), totalCandidates: total.toString(), nextCursor: complete ? null : end.toString(), complete }
 }
 
 /** Bounded binary search finds the first block where scorecard submissions could exist. */
@@ -328,9 +292,7 @@ export async function readLifecycle(
 }
 
 function cashOutMetadata(chainId: number, ids: readonly bigint[]): Hex {
-  return createHookMetadata([hookMetadataId(deploymentForChain(chainId).implementation, 'cashOut')], [
-    encodeAbiParameters([{ type: 'uint256[]' }], [ids]),
-  ])
+  return build721CashOutMetadata({ metadataIdTarget: deploymentForChain(chainId).implementation, tokenIds: [...ids] })
 }
 
 function cashOutArgs(market: MarketSnapshot, account: Address, ids: readonly bigint[], minimum: bigint) {
