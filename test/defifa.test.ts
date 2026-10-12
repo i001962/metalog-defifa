@@ -3,7 +3,7 @@ import {
   decodeAbiParameters, decodeFunctionData, encodeAbiParameters, encodeEventTopics, encodeFunctionData, getAddress, keccak256,
   zeroAddress, zeroHash, stringToHex, type Address, type Hex, type TransactionReceipt,
 } from 'viem'
-import { bytes32ToCidV0, hookMetadataId } from '@bananapus/nana-sdk-core'
+import { bytes32ToCidV0, createHookMetadata, hookMetadataId } from '@bananapus/nana-sdk-core'
 import { allocateManualPositions, allocatePositions, type Allocation } from '../src/domain/allocation'
 import { coefficientsFromMoments } from '../src/domain/distribution'
 import { decodeMarketDefinition, encodeMarketDefinition, marketRanges, validateMarket, type MarketDefinition } from '../src/domain/market'
@@ -297,6 +297,9 @@ describe('Defifa launch calldata and fresh state', () => {
     const decoded = decodeFunctionData({ abi: DEFIFA_ABI.JBMultiTerminal, data: entry.data })
     const [delegate] = decodeAbiParameters([{ type: 'address' }, { type: 'uint16[]' }], `0x${(decoded.args![6] as Hex).slice(130)}`)
     expect(delegate).toBe(hook)
+    expect(decoded.args![6]).toBe(createHookMetadata([hookMetadataId(deployment.implementation, 'pay')], [
+      encodeAbiParameters([{ type: 'address' }, { type: 'uint16[]' }], [hook, [1, 3]]),
+    ]))
     expect(entry.details).toContainEqual({ label: 'Voting address', value: hook })
     expect(entry.details?.find(detail => detail.label === 'Voting power')?.value).toContain('all your existing')
     await expect(verifyDefifaTransactionReceipt(entry, mintReceipt([1, 3]))).resolves.toBeUndefined()
@@ -473,6 +476,9 @@ describe('Defifa market reads and curve entry', () => {
     expect(delegate).toBe(account)
     const expanded = allocation.tierIds.flatMap((id, index) => Array<number>(allocation.quantities[index]).fill(id))
     expect(ids).toEqual(expanded)
+    expect(metadata).toBe(createHookMetadata([hookMetadataId(deployment.implementation, 'pay')], [
+      encodeAbiParameters([{ type: 'address' }, { type: 'uint16[]' }], [account, expanded]),
+    ]))
     expect(ids).toHaveLength(20)
     now = definition.entryClosesAt
     await expect(tx.reverify!()).rejects.toThrow('not accepting entries')

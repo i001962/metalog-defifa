@@ -1,8 +1,8 @@
 import {
-  decodeAbiParameters, decodeFunctionData, encodeAbiParameters, encodeFunctionData, formatEther, getAddress,
+  decodeAbiParameters, decodeFunctionData, encodeFunctionData, formatEther, getAddress,
   parseAbi, parseEventLogs, zeroAddress, type Address, type Hex, type PublicClient, type TransactionReceipt,
 } from 'viem'
-import { createHookMetadata, hookMetadataId } from '@bananapus/nana-sdk-core'
+import { buildDefifaPayMetadata } from '@bananapus/nana-sdk-core/v6'
 import { allocateManualPositions, allocatePositions, type Allocation } from '../domain/allocation'
 import { validateCoefficients, type Coefficients } from '../domain/distribution'
 import {
@@ -292,8 +292,9 @@ function expandedTierIds(allocation: Allocation): number[] {
 
 function entryMetadata(implementation: Address, definition: MarketDefinition, beneficiary: Address, tierIds: number[]) {
   const delegate = definition.defaultAttestationDelegate ?? beneficiary
-  const payload = encodeAbiParameters([{ type: 'address' }, { type: 'uint16[]' }], [delegate, tierIds])
-  return { delegate, metadata: createHookMetadata([hookMetadataId(implementation, 'pay')], [payload]) }
+  return { delegate, metadata: buildDefifaPayMetadata({
+    metadataIdTarget: implementation, tierIdsToMint: tierIds.map(BigInt), attestationDelegate: delegate,
+  }) }
 }
 
 export function decodeEntryMemo(memoText: string, metadata: Hex) {
