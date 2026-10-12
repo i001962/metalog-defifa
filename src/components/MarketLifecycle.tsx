@@ -203,7 +203,7 @@ export function MarketLifecycle({ lifecycle, current, loading, error, onRefresh,
           <button type="button" aria-pressed={resultView === 'one-range'} onClick={() => setResultView('one-range')}>One range</button>
         </div>
         <p className="hint">Assign payout percentages across ranges. They must total exactly 100%. Holders still decide whether to ratify the result.</p>
-        {resultView === 'one-range' ? <><label className="field"><span>Propose one range</span><select value="" onChange={event => {
+        {resultView === 'one-range' ? <><label className="field"><span>Propose one range</span><select className="result-range-select" value="" onChange={event => {
           if (!event.target.value) return
           setPercentages(market.ranges.map(range => String(range.tierId) === event.target.value ? '100' : '0'))
           setScoreTouched(true)

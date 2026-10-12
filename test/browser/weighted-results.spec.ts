@@ -18,7 +18,7 @@ const snapshot: LifecycleSnapshot = {
   noContestAfter: definition.resolvesAt + 1000000, canSubmitScorecard: true, canDelegate: false, canFulfill: false, canTriggerNoContest: false, cashOutMode: null,
 }
 
-test('weighted results are the default, preserve drafts across views and require exactly 100%', async ({ page }) => {
+test('weighted results are the default, preserve drafts across views and require exactly 100%', async ({ page }, testInfo) => {
   const writes: string[] = []
   page.on('request', request => {
     if (request.method() === 'POST' && /eth_send|wallet_send/.test(request.postData() ?? '')) writes.push(request.url())
@@ -60,6 +60,26 @@ test('weighted results are the default, preserve drafts across views and require
   await expect(summary.getByRole('row').nth(2)).toHaveText(`${snapshot.market.ranges[1].label}40%`)
   await one.click()
   await expect(one).toHaveAttribute('aria-pressed', 'true')
+  const rangeSelect = editor.getByRole('combobox', { name: 'Propose one range', exact: true })
+  await rangeSelect.focus()
+  await expect(rangeSelect).toBeFocused()
+  await expect(rangeSelect).toHaveCSS('outline-style', 'solid')
+  await expect(rangeSelect).toHaveCSS('padding-right', '36px')
+  await expect(rangeSelect).toHaveCSS('background-size', '12px')
+  await expect(rangeSelect).toHaveCSS('background-position', 'calc(100% - 12px) 50%')
+  const geometry = await rangeSelect.evaluate(select => {
+    const context = document.createElement('canvas').getContext('2d')!
+    context.font = getComputedStyle(select).font
+    return {
+      width: select.getBoundingClientRect().width,
+      textWidth: Math.max(...Array.from((select as HTMLSelectElement).options, option => context.measureText(option.text).width)),
+      available: select.parentElement!.getBoundingClientRect().width,
+    }
+  })
+  expect(geometry.width).toBeGreaterThanOrEqual(geometry.textWidth + 48)
+  expect(geometry.width).toBeLessThanOrEqual(geometry.textWidth + 60)
+  expect(geometry.width).toBeLessThan(geometry.available)
+  await editor.screenshot({ path: testInfo.outputPath('compact-result-select.png') })
   await expect(inputs).toHaveCount(0)
   await expect(summary.getByRole('row').nth(1)).toContainText('60%')
   await weighted.click()
