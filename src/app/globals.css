@@ -365,7 +365,6 @@ section.forecast[aria-labelledby="your-view"] { margin-top: 0; }
 .chart-ask .chart-ask-moved { color: var(--blue); }
 .chart-ask button { min-height: 0; margin: 0; padding: 0; border: 0; background: none; font: inherit; color: var(--ink); text-decoration: underline dotted; text-underline-offset: 3px; cursor: pointer; }
 .chart-edge line { stroke: var(--ink); stroke-width: 1.5; stroke-dasharray: 4 4; }
-.chart .chart-edge text { font-weight: 650; fill: var(--ink); }
 .chart-payout { fill: var(--blue); opacity: .85; }
 .callout-payout { color: var(--blue-soft); }
 .dot-a { fill: var(--accent); } .dot-b { fill: #e7a14a; } .dot-c { fill: var(--blue); opacity: .5; }

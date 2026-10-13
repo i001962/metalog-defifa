@@ -207,8 +207,7 @@ export function PositionChart({ ranges, quantities, coefficients, crowd, payout,
         </polygon>
       })}
       {edge !== null && <g className="chart-edge" pointerEvents="none">
-        <line x1={x(edge)} x2={x(edge)} y1={axis} y2={TOP - 8} />
-        <text x={x(edge)} y={TOP - 12} textAnchor="middle">{formatPercentage(edge, 3)}</text>
+        <line x1={x(edge)} x2={x(edge)} y1={axis} y2={TOP} />
       </g>}
       {overflow.map(range => <text key={`label-${range.tierId}`} x={tailX(sideOf(range)) + TAIL / 2} y={HEIGHT - 28} textAnchor="middle">
         {sideOf(range) === 'low' ? '<' : '≥'}</text>)}
