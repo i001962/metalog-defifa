@@ -13,6 +13,7 @@ import { MarketFacts } from './MarketFacts'
 import { MarketLifecycle } from './MarketLifecycle'
 import { Entries } from './Entries'
 import { CrowdChart } from './CrowdChart'
+import { Activity } from './Activity'
 import { StageLamps } from './StageLamps'
 import { ChainIcon } from './ChainIcon'
 import type { MarketSnapshot } from '@/lib/defifa'
@@ -107,6 +108,7 @@ export function MarketView({ chainId, projectId }: { chainId: number; projectId:
         <div className="row"><h2 id="crowd-heading">Stake-weighted positions</h2><div className="inline">
           <a href={`/api/markets/${chainId}/${projectId}`}>JSON</a>
           <a href={`/api/markets/${chainId}/${projectId}?format=sipmath`}>SIPmath</a>
+          <a href={`${chainForId(chainId).blockExplorers.default.url}/address/${market.hook}`} target="_blank" rel="noreferrer">Contract</a>
         </div></div>
         <div className="crowd-legend"><span className="legend-crowd">Crowd stake</span>
           {data.ratifiedPayoutShares && <span className="legend-payout">Ratified payout</span>}
@@ -114,13 +116,12 @@ export function MarketView({ chainId, projectId }: { chainId: number; projectId:
         <CrowdChart ranges={market.ranges} supplies={supplies} payoutShares={data.ratifiedPayoutShares} mine={mine} />
         {lifecycle.cashOutMode && <div className="actions"><button type="button" className="primary" onClick={() => setTab('nfts')}>
           {lifecycle.cashOutMode === 'cash-out' ? 'Claim payout' : 'Refund'} with your NFTs</button></div>}
-        <details><summary>Table</summary><div className="table-wrap"><table><thead><tr><th>Range</th><th>Positions</th><th>Share</th>{data.ratifiedPayoutShares && <th>Payout</th>}</tr></thead><tbody>
+        <div className="table-wrap crowd-table"><table><thead><tr><th>Range</th><th>Positions</th><th>Share</th>{data.ratifiedPayoutShares && <th>Payout</th>}</tr></thead><tbody>
           {market.ranges.map((range, index) => <tr key={range.tierId}><td>{range.label}</td><td>{market.tiers[index].supply}</td>
             <td>{distribution.probabilities ? `${(distribution.probabilities[index] * 100).toFixed(2)}%` : '—'}</td>
             {data.ratifiedPayoutShares && <td>{(data.ratifiedPayoutShares[index] * 100).toFixed(2)}%</td>}</tr>)}
-        </tbody></table></div></details>
-        <p className="hint">{distribution.totalSupply} circulating NFTs at block {market.blockNumber}. Refunds and redemptions change circulating supply. Payouts follow the ratified result{market.ratifiedScorecardId ? <> <code>{market.ratifiedScorecardId}</code></> : ''}.
-          {' '}<a href={`${chainForId(chainId).blockExplorers.default.url}/address/${market.hook}`} target="_blank" rel="noreferrer">View game contract</a></p>
+        </tbody></table></div>
+        <Activity market={market} active={shown === 'crowd'} />
       </section>
     </div>
     <MarketLifecycle key={`play:${chainId}:${projectId}`} lifecycle={lifecycle} current={current}
