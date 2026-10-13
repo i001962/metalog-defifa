@@ -94,7 +94,8 @@ export function StageLamps({ market, positions, liveStage, onPreview }: {
       <span className="lamp-note">{lamp.note}</span>
       <svg viewBox="0 0 26 26" aria-hidden="true"><circle cx="13" cy="13" r="9" /></svg>
       <small>{lamp.date}</small>
-      {gaps[index] && <span className="lamp-gap"><span>{gaps[index]}</span></span>}
+      {gaps[index] && <span className="lamp-gap"><span><span className="lamp-span">{gaps[index]}</span>{moving?.segment === index && <>
+        <span className="pip" aria-hidden="true">|</span><span className="lamp-left">{moving.to > now ? `${remaining(moving.to - now)} left` : 'ending'}</span></>}</span></span>}
       {/* Finished segments stay filled; the running one grows from its lamp toward the next. */}
       {index < 3 && (index < step || progress?.segment === index) && <span className="lamp-progress" data-segment={index}
         {...progress?.segment === index ? { role: 'progressbar', 'aria-label': index === 0 ? 'Entry progress' : 'Game progress',

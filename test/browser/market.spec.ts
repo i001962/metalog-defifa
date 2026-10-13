@@ -151,6 +151,11 @@ test('example curve, decimals, raw validation and independent stake errors', asy
   const middle = page.getByRole('textbox', { name: 'a4 | Middle spread', exact: true })
   const original = await scale.inputValue()
   const stake = page.getByRole('textbox', { name: 'Buy (ETH)' })
+  await stake.fill('1000')
+  // Stake errors sit on the Buy field itself.
+  await expect(stake).toHaveAttribute('aria-invalid', 'true')
+  await expect(page.locator('#stake-error')).toContainText('Use at most 160 positions per entry')
+  await expect(page.locator('label').filter({ has: stake }).getByRole('alert')).toBeVisible()
   await stake.fill('.')
   await expect(page.getByRole('img', { name: 'Your probability distribution', exact: true })).toBeVisible()
   await expect(density).toBeVisible()

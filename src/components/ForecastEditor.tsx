@@ -57,18 +57,25 @@ export function ForecastEditor({ definition, market, current = true, onSubmitted
   if (curve.coefficients && curve.coefficients !== lastValidCurves[mode]) setLastValidCurves({ ...lastValidCurves, [mode]: curve.coefficients })
   const displayedCurve = curve.coefficients ?? lastValidCurves[mode]!
   const ranges = useMemo(() => marketRanges(definition), [definition])
+  // The stake is checked on its own so its error sits on the Buy field.
+  const stake = useMemo(() => {
+    try { return { payment: positionsForBudget(budget, definition.unitPriceWei), error: null } }
+    catch (cause) { return { payment: null, error: cause instanceof Error ? cause.message : 'Check your stake.' } }
+  }, [budget, definition.unitPriceWei])
   const automatic = useMemo(() => {
     try {
       if (!curve.coefficients) throw new Error(curve.error || 'Check your curve.')
-      const payment = positionsForBudget(budget, definition.unitPriceWei)
+      if (!stake.payment) throw new Error(stake.error)
+      const payment = stake.payment
       const preview = forecastPreview({ market: definition, coefficients: curve.coefficients, positions: payment.count })
       return { payment, preview, error: null }
     } catch (cause) {
       return { payment: null, preview: null, error: cause instanceof Error ? cause.message : 'Check your stake.' }
     }
-  }, [curve, budget, definition])
+  }, [curve, stake, definition])
   const manualCounts = useMemo(() => quantities?.every(value => /^\d+$/.test(value) && Number.isSafeInteger(Number(value)))
     ? quantities.map(Number) : null, [quantities])
+  const stakeError = manual || !curve.coefficients ? null : stake.error
   const model = useMemo(() => {
     if (!manual) return automatic
     try {
@@ -180,7 +187,9 @@ export function ForecastEditor({ definition, market, current = true, onSubmitted
         </tbody></table>
       </div>}
       <div className="ticket-stake">
-        <label className="field"><span>Buy (ETH)</span><input className="stake-input" inputMode="decimal" readOnly={manual} value={manual ? (model.payment ? formatEther(model.payment.valueWei) : '') : budget} onChange={event => setBudgets(previous => ({ ...previous, [mode]: event.target.value }))} /><small>{formatEther(BigInt(definition.unitPriceWei))} ETH per position</small></label>
+        <label className="field"><span>Buy (ETH)</span><input className="stake-input" inputMode="decimal" readOnly={manual} value={manual ? (model.payment ? formatEther(model.payment.valueWei) : '') : budget} onChange={event => setBudgets(previous => ({ ...previous, [mode]: event.target.value }))}
+          aria-invalid={stakeError !== null} aria-describedby={stakeError ? 'stake-error' : undefined} />
+          {stakeError ? <small id="stake-error" className="error" role="alert">{stakeError}</small> : <small>{formatEther(BigInt(definition.unitPriceWei))} ETH per position</small>}</label>
         {displayedModel?.preview && displayedModel.payment && <div className="field">
           <span>{displayedModel.preview.allocation.count} positions for {formatEther(displayedModel.payment.valueWei)} ETH</span>
           <small>{!model.preview ? 'Last valid preview' : `${manual ? 'Difference from reference curve' : 'Rounding difference'}: ${(displayedModel.preview.allocation.totalVariationError * 100).toFixed(2)}%`}</small>
@@ -195,7 +204,7 @@ export function ForecastEditor({ definition, market, current = true, onSubmitted
           </tr>)}
         </tbody></table>
       </div>}
-      {model.error && <p id="forecast-error" className="error" role="alert">{model.error}</p>}
+      {model.error && !stakeError && <p id="forecast-error" className="error" role="alert">{model.error}</p>}
       <div className="actions ticket-actions">
         {market && <button className="primary" disabled={!current || !model.preview || Boolean(closed) || submitting || transactions.busy || transactions.hasPendingForMarket(market!)} onClick={submit}>
           {submitting ? 'Preparing entry…' : !address ? 'Connect to enter' : isSigna ? 'Use external wallet to enter' : 'Review entry'}

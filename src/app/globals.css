@@ -400,7 +400,12 @@ section.forecast[aria-labelledby="your-view"] { margin-top: 0; }
 .lamp-gap { position: absolute; top: 64px; left: calc(50% + 24px); width: calc(100% - 48px); display: flex; justify-content: center; pointer-events: none; }
 .lamp-gap { font: italic 600 12px/14px var(--serif); color: var(--muted); }
 .lamp-gap > span { white-space: nowrap; }
-@media (max-width: 620px) { .lamp-gap { display: none; } }
+@media (max-width: 620px) {
+  .lamp-gap { display: none; }
+  /* Phones keep only the running segment's time left. */
+  .lamp-gap:has(.lamp-left) { display: flex; }
+  .lamp-gap .lamp-span, .lamp-gap .pip { display: none; }
+}
 
 /* Order book while the game plays out: bids in green, asks in rust, depth and order forms under a range. */
 .order-book { margin: 8px 0 20px; }

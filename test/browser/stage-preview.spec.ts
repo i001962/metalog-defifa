@@ -26,6 +26,9 @@ test('previewing another stage restyles the page and disables every action until
   const lamps = page.getByRole('list', { name: 'Game stages', exact: true }).getByRole('listitem')
   const entry = page.getByRole('button', { name: 'Connect to enter', exact: true })
   await expect(lamps.nth(1)).toHaveAttribute('aria-current', 'step')
+  // The running segment shows its length and the time left.
+  await expect(lamps.nth(1).locator('.lamp-left')).toHaveText(/^\d+h \d+m left$/)
+  await expect(lamps.nth(0).locator('.lamp-left')).toHaveCount(0)
   await expect(page.getByText('Locked', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Preview Claims', exact: true }).click()
   await expect(page.getByText('nothing can be sent', { exact: false })).toBeVisible()
