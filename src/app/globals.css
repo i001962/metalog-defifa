@@ -251,7 +251,7 @@ main:has(.market) { padding-top: 22px; }
 .lamp:hover strong { text-decoration: underline; text-underline-offset: 3px; }
 .lamp[data-live="true"] circle { stroke: var(--accent); stroke-dasharray: 3 3; }
 /* A quiet note above the lamps while a stage is previewed. */
-.preview-note { position: absolute; top: -20px; right: 0; margin: 0; font-size: 12px; line-height: 16px; color: var(--cta); }
+.preview-note { position: absolute; top: -20px; left: 0; margin: 0; font-size: 12px; line-height: 16px; color: var(--cta); }
 .preview-note button { min-height: 0; margin: 0; padding: 0; border: 0; background: none; font: inherit; color: inherit; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
 @keyframes flicker { 0%, 100% { opacity: 1; } 45% { opacity: .86; } 50% { opacity: .97; } 70% { opacity: .9; } }
 @media (prefers-reduced-motion: reduce) { .lamp[data-state="current"] circle { animation: none; } }

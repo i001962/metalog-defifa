@@ -16,8 +16,8 @@ export function useEthUsd(): number | undefined {
   }).data
 }
 
-/** Dollars with cents, whole dollars from $1,000, and three significant digits below a dollar. */
+/** Whole dollars from $1,000, cents from a cent, and three significant digits below a cent. */
 export function usdText(value: number) {
-  const digits = value >= 1000 ? { maximumFractionDigits: 0 } : value >= 1 ? { minimumFractionDigits: 2, maximumFractionDigits: 2 } : { maximumSignificantDigits: 3 }
+  const digits = value >= 1000 ? { maximumFractionDigits: 0 } : value >= .01 ? { minimumFractionDigits: 2, maximumFractionDigits: 2 } : { maximumSignificantDigits: 3 }
   return `$${value.toLocaleString('en-US', digits)}`
 }
