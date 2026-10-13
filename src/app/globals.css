@@ -203,21 +203,20 @@ main:has(.market) { padding-top: 22px; }
 @media (max-width: 620px) {
   .lamp:not([data-state="current"]) small { visibility: hidden; }
   .lamp strong { font-size: 11px; }
-  .lamp em { font-size: 13px; }
   .tabs [role="tab"] { padding-inline: 12px; }
 }
 
 .lamps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); position: relative; }
 /* The wire runs through the lamps, under two 16px rows: stage and note. */
-.lamps::before { content: ''; position: absolute; top: 49px; inset-inline: 12.5%; border-top: 2px solid #b98a5a; }
+.lamps { --wire: 49px; }
+.lamps::before { content: ''; position: absolute; top: var(--wire); inset-inline: 12.5%; border-top: 2px solid #b98a5a; }
 .lamp { position: relative; display: grid; align-content: start; justify-items: center; text-align: center; gap: 2px; padding-inline: 4px; color: var(--muted); }
 .lamp svg { width: 26px; height: 26px; overflow: visible; }
 .lamp circle { fill: var(--sunk); stroke: #b98a5a; stroke-width: 1.6; }
 .lamp[data-state="past"] circle { fill: #f3cf86; stroke: #c99a4c; }
-.lamp[data-state="current"] circle { fill: var(--lamp); stroke: var(--accent); filter: drop-shadow(0 0 6px #ffcf66) drop-shadow(0 0 14px #f39a3c); animation: flicker 3.2s ease-in-out infinite; }
+.lamp[data-state="current"] circle { fill: color-mix(in srgb, var(--pot-color, var(--accent)) 30%, #fff6dc); stroke: var(--pot-color, var(--accent)); filter: drop-shadow(0 0 6px color-mix(in srgb, var(--pot-color, var(--accent)) 55%, transparent)) drop-shadow(0 0 14px color-mix(in srgb, var(--pot-color, var(--accent)) 35%, transparent)); animation: flicker 3.2s ease-in-out infinite; }
 .lamp strong { font-size: 13px; line-height: 16px; font-weight: 600; color: var(--ink); }
 .lamp[data-state="future"] strong { color: var(--muted); font-weight: 500; }
-.lamp em { font: italic 600 15px/1.2 var(--serif); color: var(--cta); font-variant-numeric: tabular-nums; }
 .lamp small { font-size: 11px; line-height: 14px; min-height: 14px; white-space: nowrap; }
 /* The pot is the start of the wire: its padlock follows the stage. */
 /* A fixed pot column keeps the lamps still while stages change. */
@@ -232,10 +231,13 @@ main:has(.market) { padding-top: 22px; }
 .pot-state { display: inline-flex; align-items: center; gap: 5px; margin-top: 4px; font-size: 13px; font-weight: 600; color: var(--ink); }
 .pot-state svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; }
 .pot-state rect { fill: currentColor; fill-opacity: .18; }
-.stage-bar[data-pot="open"] .pot-state { color: var(--green); }
-.stage-bar[data-pot="locked"] .pot-state { color: var(--blue); }
-.stage-bar[data-pot="locked"] .pot strong { color: var(--blue); }
-.stage-bar[data-pot="claimable"] .pot-state { color: var(--cta); }
+/* One pot color per state: amount, ETH line, padlock, the current lamp and the progress fill. */
+.stage-bar[data-pot="open"] { --pot-color: var(--green); }
+.stage-bar[data-pot="locked"] { --pot-color: var(--blue); }
+.stage-bar[data-pot="claimable"] { --pot-color: var(--cta); }
+.pot strong, .pot-amounts, .pot-state { color: var(--pot-color); }
+.lamp-progress { position: absolute; top: calc(var(--wire) - 1px); left: calc(50% + 13px); width: calc(100% - 26px); height: 4px; pointer-events: none; }
+.lamp-progress > span { display: block; height: 100%; background: var(--pot-color); border-radius: 2px; }
 @media (max-width: 620px) {
   .stage-bar { grid-template-columns: 1fr; gap: 14px; }
 }
@@ -373,7 +375,7 @@ section.forecast[aria-labelledby="your-view"] { margin-top: 0; }
 @media (max-width: 620px) {
   .lamp:not([data-state="current"]) .lamp-note { visibility: hidden; }
   .lamp-note { white-space: normal; min-height: 32px; }
-  .lamps::before { top: 65px; }
+  .lamps { --wire: 65px; }
 }
 /* Durations sit in the date row below the wire, midway between lamps. */
 .lamp-gap { position: absolute; top: 64px; left: calc(50% + 24px); width: calc(100% - 48px); display: flex; justify-content: center; pointer-events: none; }

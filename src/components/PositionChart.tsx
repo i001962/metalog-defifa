@@ -5,7 +5,7 @@ import { positionDensities } from '@/domain/allocation'
 import { densityBuckets, type Coefficients } from '@/domain/distribution'
 import { binForOutcome, formatPercentage, type RangeBin } from '@/domain/ranges'
 
-const LEFT = 8, RIGHT = 8, TOP = 24, BOTTOM = 51, TAIL_GAP = 10, TAIL_SHARE = .38
+const LEFT = 8, RIGHT = 8, TOP = 24, BOTTOM = 51, TAIL_GAP = 10, TAIL_SHARE = .5
 
 export function PositionChart({ ranges, quantities, coefficients, crowd, payout, mine = true, onChange, onPick, readOnly = false, reference = false, submitted = false }: {
   ranges: RangeBin[]
@@ -71,7 +71,7 @@ export function PositionChart({ ranges, quantities, coefficients, crowd, payout,
   const peak = Math.max(mine ? density?.peak ?? 0 : 0, ...mineShown.map(position => columnDensity(position.range, position.share)),
     ...crowdAll.map(position => columnDensity(position.range, position.share)),
     ...(payout ?? []).map((share, index) => columnDensity(ranges[index], share))) || 1
-  // Each overflow column is 38% as wide as a finite range: solve tail = share * plotWidth / n with the tails taken out of the plot.
+  // Each overflow column is half as wide as a finite range: solve tail = share * plotWidth / n with the tails taken out of the plot.
   const sides = Number(hasLow) + Number(hasHigh)
   const TAIL = TAIL_SHARE * (width - LEFT - RIGHT - sides * TAIL_GAP) / (Math.max(1, finiteRanges.length) + TAIL_SHARE * sides)
   const plotLeft = LEFT + (hasLow ? TAIL + TAIL_GAP : 0), plotRight = width - RIGHT - (hasHigh ? TAIL + TAIL_GAP : 0)

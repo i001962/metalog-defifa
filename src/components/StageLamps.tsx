@@ -49,7 +49,7 @@ export function StageLamps({ market, positions, liveStage, onPreview }: {
   const { entryOpensAt, entryClosesAt, resolvesAt } = market.definition
   const [now, setNow] = useState(market.blockTimestamp)
   useEffect(() => {
-    // ponytail: wall clock drives the countdown only; the stage itself always comes from the chain snapshot.
+    // ponytail: wall clock drives the progress only; the stage itself always comes from the chain snapshot.
     const tick = () => setNow(Date.now() / 1000)
     tick()
     const timer = setInterval(tick, 1000)
@@ -58,12 +58,15 @@ export function StageLamps({ market, positions, liveStage, onPreview }: {
   const step = STEP[market.stage]
   // Each lamp is a stage, dated by when it starts, so no two lamps share a date.
   const lamps = [
-    { label: market.stage === 'refund' ? 'Refunds' : 'Enter', note: 'Pay to play', date: shortTime(entryOpensAt),
-      countdown: market.stage === 'countdown' ? `opens in ${remaining(entryOpensAt - now)}` : market.stage === 'entry' ? `closes in ${remaining(entryClosesAt - now)}` : '' },
-    { label: 'Start', note: 'Entries locked', date: shortTime(entryClosesAt), countdown: market.stage === 'trading' ? `ends in ${remaining(resolvesAt - now)}` : '' },
-    { label: 'Results', note: 'Decide outcome', date: shortTime(resolvesAt), countdown: '' },
-    { label: market.stage === 'no-contest' ? 'No contest' : 'Claims', note: 'Collect earnings', date: '', countdown: '' },
+    { label: market.stage === 'refund' ? 'Refunds' : 'Enter', note: 'Pay to play', date: shortTime(entryOpensAt) },
+    { label: 'Start', note: 'Entries locked', date: shortTime(entryClosesAt) },
+    { label: 'Results', note: 'Decide outcome', date: shortTime(resolvesAt) },
+    { label: market.stage === 'no-contest' ? 'No contest' : 'Claims', note: 'Collect earnings', date: '' },
   ]
+  // The wire fills between the two lamps the game is moving between.
+  const moving = market.stage === 'entry' ? { segment: 0, from: entryOpensAt, to: entryClosesAt }
+    : market.stage === 'trading' ? { segment: 1, from: entryClosesAt, to: resolvesAt } : null
+  const progress = moving && { segment: moving.segment, fraction: Math.min(1, Math.max(0, (now - moving.from) / Math.max(1, moving.to - moving.from))) }
   const gaps = [span(entryClosesAt - entryOpensAt), span(resolvesAt - entryClosesAt), 'awaits ratification']
   const pot = POT[market.stage]
   const eth = formatEther(BigInt(market.potWei))
@@ -85,7 +88,7 @@ export function StageLamps({ market, positions, liveStage, onPreview }: {
       <span className="pot-head"><span className="pot-label">Pot</span><span className="pip" aria-hidden="true">|</span>
         <ChainIcon chainId={market.chainId} /><span>Game {market.projectId}</span></span>
       <strong>{usd === null ? `${eth} ETH` : `$${usd.toLocaleString('en-US', { minimumFractionDigits: usd < 1000 ? 2 : 0, maximumFractionDigits: usd < 1000 ? 2 : 0 })}`}</strong>
-      <span>{eth} ETH <span className="pip" aria-hidden="true">|</span> {positions} positions</span>
+      <span className="pot-amounts">{eth} ETH <span className="pip" aria-hidden="true">|</span> {positions} positions</span>
       <span className="pot-state">
         <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="7" width="10" height="8" rx="1.5" />
           <path d={pot.state === 'locked' ? 'M5.5 7V5a2.5 2.5 0 0 1 5 0v2' : 'M5.5 7V5a2.5 2.5 0 0 1 5 0'} /></svg>
@@ -102,8 +105,10 @@ export function StageLamps({ market, positions, liveStage, onPreview }: {
       <span className="lamp-note">{lamp.note}</span>
       <svg viewBox="0 0 26 26" aria-hidden="true"><circle cx="13" cy="13" r="9" /></svg>
       <small>{lamp.date}</small>
-      {lamp.countdown && <em>{lamp.countdown}</em>}
       {gaps[index] && <span className="lamp-gap"><span>{gaps[index]}</span></span>}
+      {progress?.segment === index && <span className="lamp-progress" role="progressbar" aria-label={index === 0 ? 'Entry progress' : 'Game progress'}
+        aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress.fraction * 100)}>
+        <span style={{ width: `${progress.fraction * 100}%` }} /></span>}
     </li>)}
   </ol>
   </div>
