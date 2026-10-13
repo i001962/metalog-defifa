@@ -29,17 +29,18 @@ export function StageLamps({ market }: { market: MarketSnapshot }) {
   const step = STEP[market.stage]
   // Each lamp is a stage, dated by when it starts, so no two lamps share a date.
   const lamps = [
-    { label: market.stage === 'refund' ? 'Refunds' : 'Entry', date: shortTime(entryOpensAt),
+    { label: market.stage === 'refund' ? 'Refunds' : 'Enter', note: 'Pay to play', date: shortTime(entryOpensAt),
       countdown: market.stage === 'countdown' ? `opens in ${remaining(entryOpensAt - now)}` : market.stage === 'entry' ? `closes in ${remaining(entryClosesAt - now)}` : '' },
-    { label: 'Observation', date: shortTime(entryClosesAt), countdown: market.stage === 'trading' ? `ends in ${remaining(resolvesAt - now)}` : '' },
-    { label: 'Results', date: shortTime(resolvesAt), countdown: '' },
-    { label: market.stage === 'no-contest' ? 'No contest' : 'Claims', date: 'after ratification', countdown: '' },
+    { label: 'Start', note: 'Entries locked', date: shortTime(entryClosesAt), countdown: market.stage === 'trading' ? `ends in ${remaining(resolvesAt - now)}` : '' },
+    { label: 'Results', note: 'Decide outcome', date: shortTime(resolvesAt), countdown: '' },
+    { label: market.stage === 'no-contest' ? 'No contest' : 'Claims', note: 'Collect earnings', date: '', countdown: '' },
   ]
   return <ol className="lamps" aria-label="Game stages" data-stage={market.stage}>
     {lamps.map((lamp, index) => <li key={index} className="lamp" data-state={index < step ? 'past' : index === step ? 'current' : 'future'}
       aria-current={index === step ? 'step' : undefined}>
       <svg viewBox="0 0 26 26" aria-hidden="true"><circle cx="13" cy="13" r="9" /></svg>
       <strong>{lamp.label}</strong>
+      <span className="lamp-note">{lamp.note}</span>
       {lamp.countdown && <em>{lamp.countdown}</em>}
       {lamp.date && <small>{lamp.date}</small>}
     </li>)}
