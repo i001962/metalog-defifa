@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react'
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
-import { formatEther } from 'viem'
 import type { LifecycleSnapshot } from '@/lib/defifa-lifecycle'
 import { marketData } from '@/lib/market-data'
 import { rememberMarket } from '@/lib/recent-markets'
@@ -74,11 +73,10 @@ export function MarketView({ chainId, projectId }: { chainId: number; projectId:
   ]
   return <div className="market">
     <header className="market-hero">
-      <StageLamps market={market} />
+      <StageLamps market={market} positions={distribution.totalSupply} />
       <div className="market-title">
         <div><h1>{market.definition.prompt}</h1>
           <p className="market-meta"><ChainIcon chainId={chainId} /><span>Game {market.projectId}</span></p></div>
-        <p className="pot"><strong>{formatEther(BigInt(market.potWei))}</strong><span>ETH pot, {distribution.totalSupply} positions</span></p>
       </div>
     </header>
     {!current && <div className="actions" role="status">
