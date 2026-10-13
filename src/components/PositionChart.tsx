@@ -7,13 +7,15 @@ import { binForOutcome, formatPercentage, type RangeBin } from '@/domain/ranges'
 
 const LEFT = 8, RIGHT = 8, TOP = 24, BOTTOM = 51, TAIL_GAP = 10, TAIL_SHARE = .5
 
-export function PositionChart({ ranges, quantities, coefficients, crowd, payout, mine = true, onChange, onPick, readOnly = false, reference = false, submitted = false }: {
+export function PositionChart({ ranges, quantities, coefficients, crowd, payout, live, mine = true, onChange, onPick, readOnly = false, reference = false, submitted = false }: {
   ranges: RangeBin[]
   quantities: number[]
   /** Circulating NFTs per range, drawn as dotted bars behind your order in the same density units. */
   crowd?: number[]
   /** Ratified payout share per range, drawn as thin blue bars. */
   payout?: number[] | null
+  /** Book-implied odds per range, shown after the crowd's opening share. */
+  live?: (number | null)[] | null
   /** False hides your curve and order, leaving the crowd and payout. */
   mine?: boolean
   coefficients: Coefficients
@@ -185,7 +187,9 @@ export function PositionChart({ ranges, quantities, coefficients, crowd, payout,
         const yours = mineShown[index]?.quantity ?? 0
         if (position.quantity === 0 && yours === 0) return null
         const { range } = position
-        const label = `${percent(position.share)}${yourTotal > 0 ? ` → ${percent((position.quantity + yours) / (crowdTotal + yourTotal))}` : ''}`
+        // The second number is the share after your order while entering, or the book's odds while the game plays out.
+        const next = yourTotal > 0 ? (position.quantity + yours) / (crowdTotal + yourTotal) : live?.[index] ?? null
+        const label = `${percent(position.share)}${next === null ? '' : ` → ${percent(next)}`}`
         // Centered above the bar and the curve; nudged inward only when it would run past the chart edge (about 8px per character).
         const curveTop = mine && range.lower !== null && range.upper !== null
           ? Math.max(0, ...(density?.buckets.filter(bucket => bucket.upper > range.lower! && bucket.lower < range.upper!).map(bucket => bucket.density) ?? [])) : 0
@@ -194,8 +198,7 @@ export function PositionChart({ ranges, quantities, coefficients, crowd, payout,
           x={Math.min(width - RIGHT - half, Math.max(LEFT + half, barCenter(position)))}
           y={axis - Math.max(tallest(range, index), curveTop) / peak * plotHeight - 6}>
           {percent(position.share)}
-          {/* The crowd's share once your order mints alongside it. */}
-          {yourTotal > 0 && <tspan className="chart-chance-after">{` → ${percent((position.quantity + yours) / (crowdTotal + yourTotal))}`}</tspan>}
+                    {next !== null && <tspan className="chart-chance-after">{` → ${percent(next)}`}</tspan>}
         </text>
       })}
       {overflow.map(range => <text key={`label-${range.tierId}`} x={tailX(sideOf(range)) + TAIL / 2} y={HEIGHT - 28} textAnchor="middle">
@@ -226,6 +229,7 @@ export function PositionChart({ ranges, quantities, coefficients, crowd, payout,
       {mine && <span className={crowdAll.length ? 'distribution-bars distribution-order' : 'distribution-bars'}>{crowdAll.length ? 'Your order' : 'NFT positions'}</span>}
       {crowdAll.length > 0 && (mine || payout) && <span className="distribution-crowd">Crowd</span>}
       {payout && <span className="distribution-payout">Ratified payout</span>}
+      {!mine && live?.some(chance => chance !== null) && <span className="distribution-live">Opening share → book odds</span>}
     </div>
     <div className="distribution-selection" role="status" aria-label="Selected range">
       {selected ? describe(selected) : 'NFT quantities cannot be displayed.'}

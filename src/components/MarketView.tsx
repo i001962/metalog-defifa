@@ -12,6 +12,9 @@ import { MarketFacts } from './MarketFacts'
 import { MarketLifecycle } from './MarketLifecycle'
 import { Activity } from './Activity'
 import { StageLamps } from './StageLamps'
+import { OrderBook } from './OrderBook'
+import { readBook } from '@/lib/book'
+import { impliedChance } from '@/domain/book'
 import type { MarketSnapshot } from '@/lib/defifa'
 import { phaseCapabilities } from '@/lib/lifecycle-phase'
 
@@ -74,6 +77,11 @@ export function MarketView({ chainId, projectId }: { chainId: number; projectId:
   const mine: Record<number, number> = {}
   for (const token of lifecycle.account?.toLowerCase() === address?.toLowerCase() ? lifecycle.inventory.tokens : []) mine[token.tierId] = (mine[token.tierId] ?? 0) + 1
   const owned = Object.keys(mine).length > 0
+  // While the game plays out, a book reprices positions; it closes at observation end.
+  const inPlay = market.stage === 'trading' || market.stage === 'settlement'
+  const book = inPlay ? readBook(market) : null
+  const bookOdds = book && market.stage === 'trading'
+    ? market.ranges.map((range, index) => impliedChance(book.books.find(item => item.tierId === range.tierId), supplies[index], BigInt(market.potWei))) : null
   // Holders in a finished game go straight to claiming; everyone else sees how it paid out.
   const focus = market.stage === 'complete' && owned ? 'nfts' : FOCUS[market.stage]
   if (tab === null) setTab(focus)
@@ -109,8 +117,9 @@ export function MarketView({ chainId, projectId }: { chainId: number; projectId:
     </div>
     <div role="tabpanel" id="panel-market" aria-labelledby="tab-market" hidden={shown !== 'market'}>
       <ForecastEditor key={`${chainId}:${projectId}`} definition={market.definition} market={market} current={current} onSubmitted={refresh}
-        crowd={supplies} payout={data.ratifiedPayoutShares}
+        crowd={supplies} payout={data.ratifiedPayoutShares} live={bookOdds}
         below={<>
+          {inPlay && <OrderBook market={market} books={book?.books ?? null} sample={!!book?.sample} owned={mine} />}
           {/* The chart carries each range's share; the data stays one click away. */}
           <p className="data-links">Data <span className="pip" aria-hidden="true">|</span>
             <a href={`/api/markets/${chainId}/${projectId}`}>JSON</a><span className="pip" aria-hidden="true">|</span>

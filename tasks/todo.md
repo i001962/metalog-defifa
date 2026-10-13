@@ -39,3 +39,24 @@ Baseline evidence: before migration65Defifa/lifecycle/Entries tests passed with 
 ## Review
 
 Official core2.29.0 registry integrity matches the SDK release receipt (`sha512-1EnCA+O8V8UEKOl5Gh9hAQR63OYUAkLn4gG2VrQfAy2ueoRFxNTJmQvzJQkJd9TQMMrS9LvzCv8ZV8TOjAY2pA==`). Initial cached ETARGET was resolved using a fresh task cache after registry propagation; no preview package was used. Minimal lock changes only SDK version/tarball/integrity and passes `npm ci`. All65 relevant equivalence tests pass after migration, matching the65-test pre-migration proof. Required `npm run check` passes lint, typecheck,211unit tests and production build; all56 production desktop/mobile browser cases pass on isolated port3130. Evidence: `/tmp/metalog-sdk-owners-before.log`, `/tmp/metalog-sdk-owners-after.log`, `/tmp/metalog-sdk-owners-check.log`, `/tmp/metalog-sdk-owners-browser.log`. Dirty parent is untouched, and no public-chain sends/pins occurred. Root owns hosted CI review, merge and publication.
+
+# Order book UI during play (2026-10-13)
+
+Resources: `/Users/jango/Documents/jb/v6/evm/AGENTS.md`, `/Users/jango/Documents/jb/v6/evm/tasks/lessons.md`, `/Users/jango/Documents/jb/v6/evm/workflow/ponytail/SKILL.md`, `/Users/jango/Documents/jb/v6/evm/workflow/ponytail/README.md`, `/Users/jango/Documents/jb/v6/evm/docs/PLAN_REFINEMENT.md`; local `AGENTS.md`, `README.md`, `docs/DESIGN.md` apply.
+
+## Plan refinement
+- **Objective:** While a game is in play, the Market tab keeps the opening spread and adds a per-range order book (bids, asks, buy, sell, place bid, place ask) and book-implied odds. jango ruled UI only for now; the book closes at observation end. Venue (Seaport on-chain vs off-chain vs new contract) is unresolved and out of scope.
+- **System fit:** Outcome is a design to judge, not executable trading. Capability: a typed `RangeBook` read owned by `src/lib/book.ts`, which returns no venue in production and a labeled sample only under `next dev`. Evidence: implied odds derive from the book plus on-chain supply and pot. Prepared action/authority: none; every order control stays disabled with "No trading venue is connected yet." Lifecycle, entry, payout and transaction owners are unaffected.
+- **Reuse and simplicity:** Reuse PositionChart's second-number label for opening → book odds, the existing pip/hint/table styles and the stage owner (`STEP`/stage). One new pure owner `src/domain/book.ts` for implied odds (price x range supply / pot) so UI never computes it. No new dependency.
+- **Evidence and unknowns:** DESIGN.md forbids fabricated live curves; so production shows no odds or levels, only the empty book. Implied odds assume the range takes the whole pot; weighted scorecards make it an upper-bound reading, stated in one short hint. Unknown: venue, fees, WETH, settlement.
+- **Verification:** Unit test for implied odds (mid, missing side, zero pot/supply, clamp). Browser test: trading stage shows the book with disabled controls and no sample data in a production build; existing suites stay green. Screenshot the dev sample.
+- **Resource budget:** One domain module + test, one book component, one lib reader, MarketView wiring and CSS. No contract, backend or chain writes. Replan if the book needs data the snapshot does not carry.
+
+- [x] Domain implied-odds owner + unit test.
+- [x] Book reader (none in production, labeled dev sample) and OrderBook component wired into Market tab during play.
+- [x] Chart shows opening → book odds when the book has prices.
+- [x] Browser test for production empty/disabled book; full suites; screenshots; push.
+
+## Review
+
+Implemented as UI only. `src/domain/book.ts` owns implied odds (3 unit tests). `src/lib/book.ts` returns no book in production and a labeled sample under `next dev`. `OrderBook` shows per-range odds, best bid/ask in USD (ETH until the price loads), depth, and place-bid/place-ask forms, all disabled with "No trading venue is connected yet." The chart reads "opening share → book odds" while in play. ETH/USD moved to `src/lib/eth-usd.ts` (one owner for the pot and book). Production build: 63 browser cases (new one asserts no sample data and disabled Buy/Sell/Review bid in play, no book during entry) and 217 unit tests pass. Venue, settlement and fees are open; nothing transacts.

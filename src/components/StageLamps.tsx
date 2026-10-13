@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useEthUsd, usdText } from '@/lib/eth-usd'
 import { formatEther } from 'viem'
 import type { MarketSnapshot } from '@/lib/defifa'
 import { ChainIcon } from './ChainIcon'
@@ -70,24 +70,13 @@ export function StageLamps({ market, positions, liveStage, onPreview }: {
   const gaps = [span(entryClosesAt - entryOpensAt), span(resolvesAt - entryClosesAt), 'awaits ratification']
   const pot = POT[market.stage]
   const eth = formatEther(BigInt(market.potWei))
-  // ponytail: Coinbase spot for display only; the pot itself is ETH, so a failed read just shows ETH.
-  const ethUsd = useQuery({
-    queryKey: ['eth-usd'],
-    queryFn: async () => {
-      const response = await fetch('https://api.coinbase.com/v2/prices/ETH-USD/spot')
-      if (!response.ok) throw new Error('ETH price unavailable')
-      const price = Number((await response.json()).data.amount)
-      if (!(price > 0)) throw new Error('ETH price unavailable')
-      return price
-    },
-    staleTime: 60_000, refetchInterval: 60_000, retry: 1,
-  }).data
+  const ethUsd = useEthUsd()
   const usd = ethUsd === undefined ? null : Number(eth) * ethUsd
   return <div className="stage-bar" data-pot={pot.state}>
     <div className="pot">
       <span className="pot-head"><span className="pot-label">Pot</span><span className="pip" aria-hidden="true">|</span>
         <ChainIcon chainId={market.chainId} /><span>Game {market.projectId}</span></span>
-      <strong>{usd === null ? `${eth} ETH` : `$${usd.toLocaleString('en-US', { minimumFractionDigits: usd < 1000 ? 2 : 0, maximumFractionDigits: usd < 1000 ? 2 : 0 })}`}</strong>
+      <strong>{usd === null ? `${eth} ETH` : usdText(usd)}</strong>
       <span className="pot-amounts">{eth} ETH <span className="pip" aria-hidden="true">|</span> {positions} positions</span>
       <span className="pot-state">
         <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="7" width="10" height="8" rx="1.5" />

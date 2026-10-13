@@ -45,3 +45,22 @@ test('previewing another stage restyles the page and disables every action until
   await expect(lamps.nth(1)).toHaveAttribute('aria-current', 'step')
   await expect(entry).toHaveCount(0)
 })
+
+test('in play, the Market tab adds an order book that cannot trade without a venue', async ({ page }) => {
+  await page.route('**/api.coinbase.com/**', route => route.abort())
+  await page.route('**/api/markets/84532/47/play?*', route => route.fulfill({ json: { ...snapshot, market: { ...snapshot.market,
+    potWei: '6000000000000', tiers: snapshot.market.tiers.map(tier => ({ ...tier, supply: '2' })) } } }))
+  await page.goto('/markets/84532/47')
+  const book = page.getByRole('region', { name: 'Order book', exact: true })
+  await expect(book).toBeVisible()
+  // Production has no venue: no sample prices or odds, and nothing can be bought or sold.
+  await expect(book.getByText('Sample book', { exact: false })).toHaveCount(0)
+  await expect(book.getByText('No trading venue is connected yet.', { exact: true })).toBeVisible()
+  for (const button of await book.getByRole('button', { name: /^(Buy|Sell)$/ }).all()) await expect(button).toBeDisabled()
+  await book.getByRole('button', { name: snapshot.market.ranges[1].label, exact: true }).click()
+  await expect(book.getByRole('button', { name: 'Review bid', exact: true })).toBeDisabled()
+  await expect(page.locator('.chart-chance-after')).toHaveCount(0)
+  // Entry is not play: the book is not shown.
+  await page.getByRole('button', { name: 'Preview Enter', exact: true }).click()
+  await expect(book).toHaveCount(0)
+})

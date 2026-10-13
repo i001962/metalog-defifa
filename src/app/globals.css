@@ -386,3 +386,28 @@ section.forecast[aria-labelledby="your-view"] { margin-top: 0; }
 .lamp-gap { font: italic 600 12px/14px var(--serif); color: var(--muted); }
 .lamp-gap > span { white-space: nowrap; }
 @media (max-width: 620px) { .lamp-gap { display: none; } }
+
+/* Order book while the game plays out: bids in green, asks in rust, depth and order forms under a range. */
+.order-book { margin: 8px 0 20px; }
+.order-book h3 { font: 600 18px/1.3 var(--serif); margin: 0; }
+.order-book .row { align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.book-table { max-width: 760px; }
+.book-table td, .book-table th { white-space: nowrap; }
+.book-table .book-odds { font-weight: 650; color: var(--blue); font-variant-numeric: tabular-nums; }
+.book-table .book-bid { color: var(--green); font-variant-numeric: tabular-nums; }
+.book-table .book-ask { color: var(--rust); font-variant-numeric: tabular-nums; }
+.book-range { min-height: 0; margin: 0; padding: 0; border: 0; background: none; font: inherit; color: inherit; text-decoration: underline dotted; text-underline-offset: 3px; cursor: pointer; }
+.book-trade { text-align: right; }
+.book-trade button { min-height: 0; margin: 0 0 0 6px; padding: 4px 12px; font-size: 13px; }
+.book-depth > td { background: var(--surface); padding: 14px; white-space: normal; }
+.book-sides { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+.book-sides h4 { margin: 0 0 6px; font-size: 13px; }
+.book-sides ol { list-style: none; margin: 0; padding: 0; font-size: 13px; }
+.book-sides li { display: flex; justify-content: space-between; padding: 3px 0; border-bottom: 1px solid var(--line); }
+.book-forms { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; margin-top: 14px; }
+.book-forms fieldset { border: 1px solid var(--line); padding: 10px 12px; margin: 0; min-width: 0; }
+.book-forms legend { font-size: 13px; font-weight: 600; padding: 0 4px; }
+.book-forms .field { margin-bottom: 8px; }
+.distribution-live { color: var(--blue); }
+/* Phones trade from the range panel; the table keeps prices only, so nothing scrolls sideways. */
+@media (max-width: 620px) { .book-sides, .book-forms { grid-template-columns: 1fr; } .book-table .book-trade { display: none; } .book-table th:last-child { display: none; } }

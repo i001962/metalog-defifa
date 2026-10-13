@@ -14,11 +14,13 @@ import { PositionChart } from './PositionChart'
 const COEFFICIENT_LABELS = ['Median', 'Base spread', 'Tail asymmetry', 'Middle spread', 'Shape asymmetry', 'Tail spread']
 type EditorMode = 'moments' | 'coefficients' | 'ranges'
 
-export function ForecastEditor({ definition, market, current = true, onSubmitted, crowd, payout, below }: {
+export function ForecastEditor({ definition, market, current = true, onSubmitted, crowd, payout, live, below }: {
   definition: MarketDefinition
   /** Live circulating supply per range, drawn behind your curve. */
   crowd?: number[]
   payout?: number[] | null
+  /** Book-implied odds per range while the game plays out. */
+  live?: (number | null)[] | null
   /** Shown under the chart. */
   below?: ReactNode
   market?: MarketSnapshot
@@ -130,7 +132,7 @@ export function ForecastEditor({ definition, market, current = true, onSubmitted
   return <section aria-labelledby="your-view" className="forecast" data-browsing={browsing}>
     <div className="forecast-canvas">
       <PositionChart ranges={ranges} quantities={(manual && manualCounts) || tablePreview?.allocation.quantities || []}
-        coefficients={displayedCurve} crowd={crowd} payout={payout} mine={!browsing} reference={manual} onChange={manual ? undefined : changeCurve}
+        coefficients={displayedCurve} crowd={crowd} payout={payout} live={live} mine={!browsing} reference={manual} onChange={manual ? undefined : changeCurve}
           onPick={manual ? tierId => document.querySelector<HTMLInputElement>(`input[data-tier="${tierId}"]`)?.select() : undefined}
         readOnly={!model.preview && (!manual || !manualCounts)} />
       {below}
