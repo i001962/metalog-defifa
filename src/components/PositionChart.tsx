@@ -146,6 +146,16 @@ export function PositionChart({ ranges, quantities, coefficients, crowd, crowdCu
   }
   // The crowd answers, then your order or the book moves the answer; without a crowd your order answers alone.
   const crowdShares = crowdAll.length ? crowdAll.map(position => position.share) : null
+  // The crowd's curve after your order joins it: crowd and your curve blended by positions, on the crowd curve's grid.
+  const resultLine = useMemo(() => {
+    if (!crowdLine || !crowdCurve || !mine || yourTotal <= 0) return null
+    try {
+      const yours = densityBuckets(coefficients, crowdLine.buckets.length, { low, high }).buckets
+      const total = crowdCurve.covered + yourTotal
+      return crowdLine.buckets.map((bucket, index) => ({ ...bucket,
+        density: (crowdCurve.covered * bucket.density + yourTotal * yours[index].density) / total }))
+    } catch { return null }
+  }, [crowdLine, crowdCurve, mine, yourTotal, coefficients, low, high])
   const smoothAbove = (extra: number) => {
     if (!crowdCurve || edge === null) return null
     const crowdAbove = 1 - mixtureCdf(crowdCurve.components, edge)
@@ -238,6 +248,8 @@ export function PositionChart({ ranges, quantities, coefficients, crowd, crowdCu
         {sideOf(range) === 'low' ? '<' : '≥'}</text>)}
       {crowdLine && <path className="chart-crowd-curve" pointerEvents="none"
         d={crowdLine.buckets.map((bucket, index) => `${index ? 'L' : 'M'}${x(bucket.lower)},${y(bucket.density)} L${x(bucket.upper)},${y(bucket.density)}`).join(' ')} />}
+      {resultLine && <path className="chart-result-curve" pointerEvents="none"
+        d={resultLine.map((bucket, index) => `${index ? 'L' : 'M'}${x(bucket.lower)},${y(bucket.density)} L${x(bucket.upper)},${y(bucket.density)}`).join(' ')} />}
       {mine && <path d={line} className="chart-curve" pointerEvents="none" />}
       <line x1={LEFT} x2={width - RIGHT} y1={axis} y2={axis} className="chart-axis" />
       {ticks.filter(tick => edge === null || answer === null || tick === edge || Math.abs(x(tick) - x(edge)) > 44).map(tick => <text key={tick}
@@ -265,6 +277,7 @@ export function PositionChart({ ranges, quantities, coefficients, crowd, crowdCu
       {payout && <span className="distribution-payout">Ratified payout</span>}
       {mine && <span className="distribution-line">{reference ? 'Reference curve' : 'Your curve'}</span>}
       {crowdLine && crowdCurve && <span className="distribution-crowd-curve">Crowd curve, {crowdCurve.complete ? `${crowdCurve.covered} of ${crowdCurve.minted}` : `first ${crowdCurve.covered}`} positions</span>}
+      {resultLine && <span className="distribution-result-curve">Crowd with you</span>}
     </div>
     <div className="distribution-selection" role="status" aria-label="Selected range">
       {selected ? describe(selected) : 'Position quantities cannot be displayed.'}

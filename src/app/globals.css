@@ -151,9 +151,10 @@ dialog .actions { justify-content: flex-end; }
   .facts dd { margin-bottom: 8px; }
 }
 .distribution-legend { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 18px; margin-block: 6px 10px; color: var(--muted); font-size: 12px; }
-.distribution-line, .distribution-bars, .distribution-crowd, .distribution-payout, .distribution-crowd-curve { display: inline-flex; align-items: center; gap: 6px; }
+.distribution-line, .distribution-bars, .distribution-crowd, .distribution-payout, .distribution-crowd-curve, .distribution-result-curve { display: inline-flex; align-items: center; gap: 6px; }
 .distribution-line::before { content: ''; width: 20px; border-top: 3px solid var(--blue); }
 .distribution-crowd-curve::before { content: ''; width: 20px; border-top: 3px solid var(--cta); }
+.distribution-result-curve::before { content: ''; width: 20px; border-top: 3px dashed var(--ink); }
 .distribution-bars::before { content: ''; width: 16px; height: 10px; background: #e0874a99; }
 .distribution-crowd::before { content: ''; width: 14px; height: 10px; background: radial-gradient(circle, var(--accent) 1.4px, transparent 1.8px) 0 0 / 5px 5px; }
 .distribution-payout::before { content: ''; width: 6px; height: 12px; background: var(--blue); }
@@ -302,6 +303,8 @@ section.forecast[aria-labelledby="your-view"] { margin-top: 0; }
 .chart-curve { stroke: var(--blue); stroke-width: 2.6; fill: none; }
 /* The crowd's average curve, in the crowd's color. */
 .chart-crowd-curve { stroke: var(--cta); stroke-width: 2.2; fill: none; }
+/* The crowd after your order: dashed so it reads as a projection. */
+.chart-result-curve { stroke: var(--ink); stroke-width: 2.2; stroke-dasharray: 6 4; fill: none; }
 .chart-axis { stroke: #b98a5a; }
 /* The chart shows these; they stay for screen readers. */
 .distribution-selection, .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
