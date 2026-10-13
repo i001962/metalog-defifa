@@ -7,13 +7,15 @@ import { binForOutcome, formatPercentage, type RangeBin } from '@/domain/ranges'
 
 const LEFT = 48, RIGHT = 18, TOP = 24, BOTTOM = 51
 
-export function PositionChart({ ranges, quantities, coefficients, crowd, onChange, readOnly = false, reference = false, submitted = false }: {
+export function PositionChart({ ranges, quantities, coefficients, crowd, onChange, onPick, readOnly = false, reference = false, submitted = false }: {
   ranges: RangeBin[]
   quantities: number[]
   /** Circulating NFTs per range, drawn as a step line in the same density units as your bars. */
   crowd?: number[]
   coefficients: Coefficients
   onChange?: (value: Coefficients) => void
+  /** A tap or click on a range, without dragging. */
+  onPick?: (tierId: number) => void
   readOnly?: boolean
   reference?: boolean
   submitted?: boolean
@@ -23,11 +25,13 @@ export function PositionChart({ ranges, quantities, coefficients, crowd, onChang
   const [width, setWidth] = useState(860)
   const HEIGHT = width < 700 ? 290 : 380
   const [selectedTier, setSelectedTier] = useState<number | null>(null)
+  const [callout, setCallout] = useState(false)
   useEffect(() => {
     const observer = new ResizeObserver(([entry]) => setWidth(Math.max(300, entry.contentRect.width)))
     if (element.current) observer.observe(element.current)
     return () => observer.disconnect()
   }, [])
+  const picked = useRef<number | undefined>(undefined)
   const drag = useRef<{ x: number; y: number; width: number; moved: boolean; coefficients: Coefficients } | null>(null)
   const interactive = !readOnly && !submitted && onChange !== undefined
   const positions = useMemo(() => {
@@ -68,17 +72,22 @@ export function PositionChart({ ranges, quantities, coefficients, crowd, onChang
     const range = binForOutcome(ranges, outcome)
     const position = finite.find(item => item.range.tierId === range.tierId)
     if (position) setSelectedTier(position.range.tierId)
+    setCallout(true)
+    return position?.range.tierId
   }
   function transform(original: Coefficients, shift: number, scale: number) {
     if (!interactive || !onChange) return
     onChange(original.map((value, index) => index === 0 ? value + shift : value * scale) as unknown as Coefficients)
   }
 
+  const crowdShare = (tierId: number) => crowdFinite.find(position => position.range.tierId === tierId)?.share
   return <>
+    <div className="chart-frame">
     <svg ref={element} className="chart" style={interactive ? undefined : { cursor: 'default', touchAction: 'auto', userSelect: 'auto' }}
       viewBox={`0 0 ${width} ${HEIGHT}`} role="img" aria-label={submitted ? 'Submitted curve and minted positions' : 'Your probability distribution'} tabIndex={0} aria-describedby={descriptionId}
+      onPointerLeave={event => { if (event.pointerType === 'mouse' && !drag.current) setCallout(false) }}
       onPointerDown={event => {
-        selectAt(event.clientX)
+        picked.current = selectAt(event.clientX)
         if (!interactive || event.button !== 0) return
         event.currentTarget.setPointerCapture(event.pointerId)
         drag.current = { x: event.clientX, y: event.clientY, width: event.currentTarget.getBoundingClientRect().width, moved: false, coefficients }
@@ -93,7 +102,10 @@ export function PositionChart({ ranges, quantities, coefficients, crowd, onChang
         const scale = Math.exp(Math.max(-2, Math.min(2, (start.y - event.clientY) / 140)))
         transform(start.coefficients, shift, scale)
       }}
-      onPointerUp={() => { drag.current = null }} onPointerCancel={() => { drag.current = null }}
+      onPointerUp={() => {
+        if (!drag.current?.moved && picked.current !== undefined) onPick?.(picked.current)
+        drag.current = null
+      }} onPointerCancel={() => { drag.current = null }}
       onLostPointerCapture={() => { drag.current = null }}
       onKeyDown={event => {
         if (!interactive || !['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) return
@@ -109,7 +121,7 @@ export function PositionChart({ ranges, quantities, coefficients, crowd, onChang
         return <rect key={range.tierId} x={x(range.lower!)} y={axis - height}
           width={x(range.upper!) - x(range.lower!)} height={height} className="chart-bar"
           data-selected={selected?.range.tierId === range.tierId}
-          tabIndex={0} aria-label={describe(position)} onFocus={() => setSelectedTier(range.tierId)}>
+          tabIndex={0} aria-label={describe(position)} onFocus={() => { setSelectedTier(range.tierId); setCallout(true) }}>
           <title>{describe(position)}</title>
         </rect>
       })}
@@ -127,6 +139,16 @@ export function PositionChart({ ranges, quantities, coefficients, crowd, onChang
       </text>)}
       <text x={LEFT + plotWidth / 2} y={HEIGHT - 6} textAnchor="middle">Outcome (%)</text>
     </svg>
+    {callout && selected && <div className="chart-callout" aria-hidden="true" style={{
+      left: `${Math.min(88, Math.max(12, (x(selected.range.lower!) + x(selected.range.upper!)) / 2 / width * 100))}%`,
+      top: `${Math.max(0, (axis - selected.density! / peak * plotHeight) / HEIGHT * 100)}%`,
+    }}>
+      <strong>{selected.range.label}</strong>
+      <span><b>{selected.quantity}</b> NFTs, {(selected.share * 100).toFixed(1)}%</span>
+      {crowdShare(selected.range.tierId) !== undefined && <span className="callout-crowd">Crowd {(crowdShare(selected.range.tierId)! * 100).toFixed(1)}%</span>}
+      {onPick && <em>Click to edit</em>}
+    </div>}
+    </div>
     <div className="distribution-legend">
       <span className="distribution-line">{reference ? 'Reference curve' : 'Curve'}</span>
       <span className="distribution-bars">NFT positions</span>

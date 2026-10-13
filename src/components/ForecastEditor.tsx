@@ -127,6 +127,7 @@ export function ForecastEditor({ definition, market, current = true, onSubmitted
     <div className="forecast-canvas">
       <PositionChart ranges={ranges} quantities={(manual && manualCounts) || tablePreview?.allocation.quantities || []}
         coefficients={displayedCurve} crowd={crowd} reference={manual} onChange={manual ? undefined : changeCurve}
+          onPick={manual ? tierId => document.querySelector<HTMLInputElement>(`input[data-tier="${tierId}"]`)?.select() : undefined}
         readOnly={!model.preview && (!manual || !manualCounts)} />
       {tablePreview && <details className="positions"><summary><h3>Positions ({tablePreview.allocation.count}){!model.preview && <small> | Last valid preview</small>}</h3></summary>
         <div className="positions-columns" role="region" aria-label="Positions">
@@ -172,7 +173,7 @@ export function ForecastEditor({ definition, market, current = true, onSubmitted
       </> : <div className="table-wrap positions-table range-editor" role="region" aria-label="NFT counts" tabIndex={0}>
         <table><thead><tr><th>Range</th><th>NFTs</th></tr></thead><tbody>
           {ranges.map((range, index) => <tr key={range.tierId}><td>{range.label}</td><td>
-            <input className="quantity-input" aria-label={`NFTs for ${range.label}`} inputMode="numeric"
+            <input className="quantity-input" data-tier={range.tierId} aria-label={`NFTs for ${range.label}`} inputMode="numeric"
               aria-invalid={model.error !== null} aria-describedby={model.error ? 'forecast-error' : undefined}
               value={quantities?.[index] ?? ''} onChange={event => {
                 const updated = [...(quantities ?? ranges.map(() => '0'))]
