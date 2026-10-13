@@ -203,21 +203,21 @@ main:has(.market) { padding-top: 22px; }
 }
 
 .lamps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); position: relative; }
-/* The wire runs through the lamps, under the 14px date row. */
-.lamps::before { content: ''; position: absolute; top: 29px; inset-inline: 12.5%; border-top: 2px solid #b98a5a; }
+/* The wire runs through the lamps, under two 16px rows: stage and note. */
+.lamps::before { content: ''; position: absolute; top: 49px; inset-inline: 12.5%; border-top: 2px solid #b98a5a; }
 .lamp { position: relative; display: grid; align-content: start; justify-items: center; text-align: center; gap: 2px; padding-inline: 4px; color: var(--muted); }
 .lamp svg { width: 26px; height: 26px; overflow: visible; }
 .lamp circle { fill: var(--sunk); stroke: #b98a5a; stroke-width: 1.6; }
 .lamp[data-state="past"] circle { fill: #f3cf86; stroke: #c99a4c; }
 .lamp[data-state="current"] circle { fill: var(--lamp); stroke: var(--accent); filter: drop-shadow(0 0 6px #ffcf66) drop-shadow(0 0 14px #f39a3c); animation: flicker 3.2s ease-in-out infinite; }
-.lamp strong { font-size: 13px; font-weight: 600; color: var(--ink); }
+.lamp strong { font-size: 13px; line-height: 16px; font-weight: 600; color: var(--ink); }
 .lamp[data-state="future"] strong { color: var(--muted); font-weight: 500; }
 .lamp em { font: italic 600 15px/1.2 var(--serif); color: var(--cta); font-variant-numeric: tabular-nums; }
 .lamp small { font-size: 11px; line-height: 14px; min-height: 14px; white-space: nowrap; }
 /* The pot is the start of the wire: its padlock follows the stage. */
 .stage-bar { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0; align-items: start; }
 .pot { position: relative; display: grid; justify-items: start; gap: 2px; padding-right: 20px; color: var(--muted); font-size: 12px; line-height: 1.3; }
-.pot strong { font: 600 clamp(28px, 3.4vw, 46px)/1 var(--serif); color: var(--cta); font-variant-numeric: tabular-nums; }
+.pot strong { font: 600 clamp(28px, 3.4vw, 46px)/1 var(--serif); color: var(--cta); font-variant-numeric: tabular-nums; margin-top: max(0px, calc(33px - .5em)); }
 .pot-label { font-size: 11px; line-height: 14px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
 .pot-state { display: inline-flex; align-items: center; gap: 5px; margin-top: 4px; font-size: 13px; font-weight: 600; color: var(--ink); }
 .pot-state svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; }
@@ -227,6 +227,7 @@ main:has(.market) { padding-top: 22px; }
 .stage-bar[data-pot="locked"] .pot strong { color: var(--blue); }
 .stage-bar[data-pot="claimable"] .pot-state { color: var(--cta); }
 @media (max-width: 620px) {
+  .pot strong { margin-top: 0; }
   .stage-bar { grid-template-columns: 1fr; gap: 14px; }
 }
 @keyframes flicker { 0%, 100% { opacity: 1; } 45% { opacity: .86; } 50% { opacity: .97; } 70% { opacity: .9; } }
@@ -353,10 +354,15 @@ section.forecast[aria-labelledby="your-view"] { margin-top: 0; }
 .market-below { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 380px); gap: 28px 40px; align-items: start; margin-top: 28px; }
 .market-below .crowd-table { margin-top: 0; }
 @media (max-width: 900px) { .market-below { grid-template-columns: 1fr; } }
-.lamp-note { font-size: 12px; color: var(--muted); }
-@media (max-width: 620px) { .lamp:not([data-state="current"]) .lamp-note { display: none; } }
-/* Durations sit in the date row above the wire, midway between lamps. */
-.lamp-gap { position: absolute; top: 0; left: calc(50% + 24px); width: calc(100% - 48px); display: flex; justify-content: center; pointer-events: none; }
+.lamp-note { font-size: 12px; line-height: 16px; min-height: 16px; white-space: nowrap; color: var(--muted); }
+/* Phones: the note may wrap, so it keeps two lines and the wire moves down to match. */
+@media (max-width: 620px) {
+  .lamp:not([data-state="current"]) .lamp-note { visibility: hidden; }
+  .lamp-note { white-space: normal; min-height: 32px; }
+  .lamps::before { top: 65px; }
+}
+/* Durations sit in the date row below the wire, midway between lamps. */
+.lamp-gap { position: absolute; top: 64px; left: calc(50% + 24px); width: calc(100% - 48px); display: flex; justify-content: center; pointer-events: none; }
 .lamp-gap { font: italic 600 12px/14px var(--serif); color: var(--muted); }
 .lamp-gap > span { white-space: nowrap; }
 @media (max-width: 620px) { .lamp-gap { display: none; } }

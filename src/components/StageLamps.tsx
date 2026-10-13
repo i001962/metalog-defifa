@@ -85,10 +85,10 @@ export function StageLamps({ market, positions }: { market: MarketSnapshot; posi
     <ol className="lamps" aria-label="Game stages" data-stage={market.stage}>
     {lamps.map((lamp, index) => <li key={index} className="lamp" data-state={index < step ? 'past' : index === step ? 'current' : 'future'}
       aria-current={index === step ? 'step' : undefined}>
-      <small>{lamp.date}</small>
-      <svg viewBox="0 0 26 26" aria-hidden="true"><circle cx="13" cy="13" r="9" /></svg>
       <strong>{lamp.label}</strong>
       <span className="lamp-note">{lamp.note}</span>
+      <svg viewBox="0 0 26 26" aria-hidden="true"><circle cx="13" cy="13" r="9" /></svg>
+      <small>{lamp.date}</small>
       {lamp.countdown && <em>{lamp.countdown}</em>}
       {gaps[index] && <span className="lamp-gap"><span>{gaps[index]}</span></span>}
     </li>)}
