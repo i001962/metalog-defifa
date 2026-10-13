@@ -84,8 +84,8 @@ export function StageLamps({ market, positions, liveStage, onPreview }: {
     <div className="pot">
       <span className="pot-head"><span className="pot-label">Pot</span><span className="pip" aria-hidden="true">|</span>
         <ChainIcon chainId={market.chainId} /><span>Game {market.projectId}</span></span>
-      <span>{eth} ETH <span className="pip" aria-hidden="true">|</span> {positions} positions</span>
       <strong>{usd === null ? `${eth} ETH` : `$${usd.toLocaleString('en-US', { minimumFractionDigits: usd < 1000 ? 2 : 0, maximumFractionDigits: usd < 1000 ? 2 : 0 })}`}</strong>
+      <span>{eth} ETH <span className="pip" aria-hidden="true">|</span> {positions} positions</span>
       <span className="pot-state">
         <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="7" width="10" height="8" rx="1.5" />
           <path d={pot.state === 'locked' ? 'M5.5 7V5a2.5 2.5 0 0 1 5 0v2' : 'M5.5 7V5a2.5 2.5 0 0 1 5 0'} /></svg>
