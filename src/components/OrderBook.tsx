@@ -31,13 +31,16 @@ export function OrderBook({ market, books, sample, owned, scorecards }: {
   const leading = scorecards.filter(card => card.stateName !== 'Defeated')
     .reduce<ScorecardSnapshot | null>((best, card) => !best || BigInt(card.attestationCount) > BigInt(best.attestationCount) ? card : best, null)
   const weights = market.ratifiedWeights ?? leading?.weights ?? null
-  const basis = market.ratifiedWeights ? 'under the ratified result' : leading ? `under proposal ${leading.scorecardId}, the most attested` : 'if this range wins the whole pot'
+  // The payout column names its condition: ratified, the leading proposal, or the range winning outright.
+  const paysHeader = market.ratifiedWeights ? 'Pays' : leading ? `If #${leading.scorecardId} ratifies` : 'If it wins'
+  const paysHint = market.ratifiedWeights ? 'what one position collects under the ratified result'
+    : leading ? `what one position collects if proposal ${leading.scorecardId}, the most attested, is ratified` : 'what one position collects if its range wins the whole pot'
   return <section aria-labelledby="book-heading" className="order-book">
     <div className="row"><h3 id="book-heading">Order book</h3>
       <span className="hint">{closed ? 'Closed at observation end' : `Closes at observation end, ${shortTime(market.definition.resolvesAt)}`}
         {sample && <><span className="pip" aria-hidden="true">|</span>Sample book, development only</>}</span></div>
-    <p className="hint">Pays is what one position collects {basis}.</p>
-    <div className="table-wrap"><table className="book-table"><thead><tr><th>Range</th><th>Pays</th><th>Odds</th><th>Bid</th><th>Ask</th><th><span className="sr-only">Trade</span></th></tr></thead><tbody>
+    <p className="hint">{paysHeader}: {paysHint}.</p>
+    <div className="table-wrap"><table className="book-table"><thead><tr><th>Range</th><th>{paysHeader}</th><th>Odds</th><th>Bid</th><th>Ask</th><th><span className="sr-only">Trade</span></th></tr></thead><tbody>
       {market.ranges.map((range, index) => {
         const book = books?.find(item => item.tierId === range.tierId)
         const bid = book?.bids[0], ask = book?.asks[0]

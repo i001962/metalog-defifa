@@ -2,6 +2,7 @@
 
 import { useMemo, useState, type ReactNode } from 'react'
 import { formatEther } from 'viem'
+import { useCrowdCurve } from '@/lib/crowd'
 import { coefficientsFromMoments, parseCoefficientFields, type Coefficients } from '@/domain/distribution'
 import { marketRanges, type MarketDefinition } from '@/domain/market'
 import type { MarketSnapshot } from '@/lib/defifa'
@@ -128,13 +129,14 @@ export function ForecastEditor({ definition, market, current = true, onSubmitted
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Entry could not be prepared.') }
     finally { setSubmitting(false) }
   }
+  const crowdCurve = useCrowdCurve(market).data ?? null
   const closed = market && market.stage !== 'entry'
   // After entry, the chart shows the crowd and payout; the checkout stays mounted so a draft survives.
   const browsing = Boolean(market && closed && market.stage !== 'countdown')
   return <section aria-labelledby="your-view" className="forecast" data-browsing={browsing}>
     <div className="forecast-canvas">
       <PositionChart ranges={ranges} quantities={(manual && manualCounts) || tablePreview?.allocation.quantities || []}
-        coefficients={displayedCurve} crowd={crowd} payout={payout} live={live} mine={!browsing} reference={manual} onChange={manual ? undefined : changeCurve}
+        coefficients={displayedCurve} crowd={crowd} crowdCurve={crowdCurve} payout={payout} live={live} mine={!browsing} reference={manual} onChange={manual ? undefined : changeCurve}
           onPick={manual ? tierId => document.querySelector<HTMLInputElement>(`input[data-tier="${tierId}"]`)?.select() : undefined}
         readOnly={!model.preview && (!manual || !manualCounts)} />
       {below}

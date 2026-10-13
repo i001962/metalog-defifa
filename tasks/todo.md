@@ -60,3 +60,24 @@ Resources: `/Users/jango/Documents/jb/v6/evm/AGENTS.md`, `/Users/jango/Documents
 ## Review
 
 Implemented as UI only. `src/domain/book.ts` owns implied odds (3 unit tests). `src/lib/book.ts` returns no book in production and a labeled sample under `next dev`. `OrderBook` shows per-range odds, best bid/ask in USD (ETH until the price loads), depth, and place-bid/place-ask forms, all disabled with "No trading venue is connected yet." The chart reads "opening share → book odds" while in play. ETH/USD moved to `src/lib/eth-usd.ts` (one owner for the pot and book). Production build: 63 browser cases (new one asserts no sample data and disabled Buy/Sell/Review bid in play, no book during entry) and 217 unit tests pass. Venue, settlement and fees are open; nothing transacts.
+
+# Crowd curve and smooth chance (2026-10-13)
+
+Resources: `/Users/jango/Documents/jb/v6/evm/AGENTS.md`, `/Users/jango/Documents/jb/v6/evm/tasks/lessons.md`, `/Users/jango/Documents/jb/v6/evm/workflow/ponytail/SKILL.md`, `/Users/jango/Documents/jb/v6/evm/workflow/ponytail/README.md`, `/Users/jango/Documents/jb/v6/evm/docs/PLAN_REFINEMENT.md`; local `AGENTS.md`, `README.md`, `docs/DESIGN.md` apply.
+
+## Plan refinement
+- **Objective:** kmac's #2 and #3, approved by jango: draw the crowd's average curve (stake-weighted mixture of verified entry curves) and answer "chance at or above X" at any X from it, with one coverage line. No starting-curve change, no per-entry picker, no contract change.
+- **System fit:** Evidence already exists: `metalog.entry.v1` memos carry coefficients, `readEntryHistory` verifies them against minted positions. New read-only `/crowd` route pages that owner to completion (bounded) and returns verified curve components plus minted coverage. Display only; no action or authority change.
+- **Reuse and simplicity:** Reuse `readEntryHistory` (verification), `cdf`/`densityBuckets` (math). One domain owner for mixtures in `distribution.ts`. Bucket answers stay as the fallback and while the book prices ranges (both exact at edges).
+- **Evidence and unknowns:** Only Metalog curve entries carry curves; manual and direct pays do not, so the note states coverage of minted positions. Mint-time weights ignore later refunds and transfers; the bars stay the exact current counts. Cost bound: 25 pages x 8 entries.
+- **Verification:** Unit tests for mixture CDF/buckets (single curve equals itself, weights, two-curve average). Route test via existing entries fixtures if cheap; browser suite green; screenshot on dev:live.
+- **Resource budget:** One route, one domain addition, chart wiring. Replan if Center rate limits make the route unreliable.
+
+- [x] Mixture math + tests.
+- [x] `/crowd` route.
+- [x] Chart: crowd line, continuous threshold, coverage note.
+- [x] Suites, screenshots, push.
+
+## Review
+
+Replanned once: browser paging of `/entries` scanned 500 blocks per request (about 20 x 9s for a 1-day Base window), so the crowd moved to a server route (`/crowd`, `readCrowd`) that scans the window in parallel 500-block windows (3 at a time, Center limit), verifies each entry like the history feed and caches closed games permanently, open games for a minute. Verified against a Base fork (keyed RPC; localhost Center hits the public limit): game 27 returns 1 verified curve entry covering 100 of 100 positions in about 10s. Chart draws the crowd curve, answers at any value (snaps to edges while the book prices ranges), shades the asked side and names the edge on the axis. Also renamed the order book's Pays to its condition. 222 unit and 63 browser cases pass on a production build. dev:live proxies `/api/markets` to production, so the crowd curve shows there only after this deploys.

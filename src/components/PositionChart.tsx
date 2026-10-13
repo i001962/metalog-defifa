@@ -2,16 +2,19 @@
 
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { positionDensities } from '@/domain/allocation'
-import { densityBuckets, type Coefficients } from '@/domain/distribution'
+import { cdf, densityBuckets, mixtureBuckets, mixtureCdf, type Coefficients } from '@/domain/distribution'
+import type { CrowdCurve } from '@/lib/crowd'
 import { binForOutcome, formatPercentage, rangeEdges, shareAtOrAbove, type RangeBin } from '@/domain/ranges'
 
 const LEFT = 8, RIGHT = 8, TOP = 24, BOTTOM = 51, TAIL_GAP = 10, TAIL_SHARE = .5
 
-export function PositionChart({ ranges, quantities, coefficients, crowd, payout, live, mine = true, onChange, onPick, readOnly = false, reference = false, submitted = false }: {
+export function PositionChart({ ranges, quantities, coefficients, crowd, crowdCurve, payout, live, mine = true, onChange, onPick, readOnly = false, reference = false, submitted = false }: {
   ranges: RangeBin[]
   quantities: number[]
   /** Circulating NFTs per range, drawn as dotted bars behind your order in the same density units. */
   crowd?: number[]
+  /** The crowd's entry curves, averaged into one line and used to answer at any value. */
+  crowdCurve?: CrowdCurve | null
   /** Ratified payout share per range, drawn as thin blue bars. */
   payout?: number[] | null
   /** Book-implied odds per range, shown after the crowd's opening share. */
@@ -59,6 +62,10 @@ export function PositionChart({ ranges, quantities, coefficients, crowd, payout,
       return Number.isFinite(result.peak) ? result : null
     } catch { return null }
   }, [coefficients, low, high])
+  const crowdLine = useMemo(() => {
+    try { return crowdCurve?.components.length ? mixtureBuckets(crowdCurve.components, 300, { low, high }) : null }
+    catch { return null }
+  }, [crowdCurve, low, high])
   const crowdAll = useMemo(() => {
     try { return crowd?.some(supply => supply > 0) ? positionDensities(ranges, crowd) : [] }
     catch { return [] }
@@ -76,7 +83,7 @@ export function PositionChart({ ranges, quantities, coefficients, crowd, payout,
   const hasLow = overflow.some(range => sideOf(range) === 'low'), hasHigh = overflow.some(range => sideOf(range) === 'high')
   const peak = Math.max(mine ? density?.peak ?? 0 : 0, ...mineShown.map(position => columnDensity(position.range, position.share)),
     ...crowdAll.map(position => columnDensity(position.range, position.share)),
-    ...(payout ?? []).map((share, index) => columnDensity(ranges[index], share))) || 1
+    ...(payout ?? []).map((share, index) => columnDensity(ranges[index], share)), crowdLine?.peak ?? 0) || 1
   // Each overflow column is half as wide as a finite range: solve tail = share * plotWidth / n with the tails taken out of the plot.
   const sides = Number(hasLow) + Number(hasHigh)
   const TAIL = TAIL_SHARE * (width - LEFT - RIGHT - sides * TAIL_GAP) / (Math.max(1, finiteRanges.length) + TAIL_SHARE * sides)
@@ -105,8 +112,9 @@ export function PositionChart({ ranges, quantities, coefficients, crowd, payout,
     const bounds = element.current?.getBoundingClientRect()
     if (!bounds || bounds.width <= 0 || !basis) return
     const outcome = low + ((clientX - bounds.left) / bounds.width * width - plotLeft) / plotWidth * span
-    // ponytail: snaps to the nearest range edge, where the crowd's answer is exact; between edges would need a fitted curve.
-    setEdgeAt(edges.reduce((best, item) => Math.abs(item - outcome) < Math.abs(best - outcome) ? item : best, edges[0]))
+    // With the crowd curve any value has an answer; bucket counts (and book prices) are exact only at range edges.
+    setEdgeAt(smooth ? Math.round(Math.min(high, Math.max(low, outcome)) * 100) / 100
+      : edges.reduce((best, item) => Math.abs(item - outcome) < Math.abs(best - outcome) ? item : best, edges[0]))
     const range = binForOutcome(ranges, outcome)
     const position = basis.find(item => item.range.tierId === range.tierId)
     if (position) setSelectedTier(position.range.tierId)
@@ -119,7 +127,10 @@ export function PositionChart({ ranges, quantities, coefficients, crowd, payout,
   }
 
   // The asked edge, defaulting to the one nearest no change.
-  const edge = edgeAt ?? (edges.length ? edges.reduce((best, item) => Math.abs(item) < Math.abs(best) ? item : best, edges[0]) : null)
+  const bookOdds = live?.every(chance => chance !== null) ? live as number[] : null
+  const smooth = !!crowdLine && !bookOdds
+  const edge = edgeAt ?? (smooth ? Math.min(high, Math.max(low, 0))
+    : edges.length ? edges.reduce((best, item) => Math.abs(item) < Math.abs(best) ? item : best, edges[0]) : null)
   const yourTotal = mineShown.reduce((sum, position) => sum + position.quantity, 0)
   const percent = (share: number) => share > 0 && share < .01 ? '<1%' : share < 1 && share > .99 ? '>99%' : `${Math.round(share * 100)}%`
   const asked = (shares: readonly number[]) => {
@@ -131,9 +142,15 @@ export function PositionChart({ ranges, quantities, coefficients, crowd, payout,
   }
   // The crowd answers, then your order or the book moves the answer; without a crowd your order answers alone.
   const crowdShares = crowdAll.length ? crowdAll.map(position => position.share) : null
-  const answer = asked(crowdShares ?? mineShown.map(position => position.share))
-  const moved = crowdShares && yourTotal > 0 ? { value: asked(crowdAll.map((position, index) => position.quantity + (mineShown[index]?.quantity ?? 0))), by: 'with your order' }
-    : crowdShares && live?.every(chance => chance !== null) ? { value: asked(live as number[]), by: 'on the book' } : null
+  const smoothAbove = (extra: number) => {
+    if (!crowdCurve || edge === null) return null
+    const crowdAbove = 1 - mixtureCdf(crowdCurve.components, edge)
+    const above = extra > 0 ? (crowdCurve.covered * crowdAbove + extra * (1 - cdf(coefficients, edge))) / (crowdCurve.covered + extra) : crowdAbove
+    return below ? 1 - above : above
+  }
+  const answer = smooth ? smoothAbove(0) : asked(crowdShares ?? mineShown.map(position => position.share))
+  const moved = crowdShares && yourTotal > 0 ? { value: smooth ? smoothAbove(yourTotal) : asked(crowdAll.map((position, index) => position.quantity + (mineShown[index]?.quantity ?? 0))), by: 'with your order' }
+    : crowdShares && bookOdds ? { value: asked(bookOdds), by: 'on the book' } : null
   const crowdShare = (tierId: number) => crowdAll.find(position => position.range.tierId === tierId)?.share
   return <>
     <div className="chart-frame">
@@ -206,14 +223,20 @@ export function PositionChart({ ranges, quantities, coefficients, crowd, payout,
           tabIndex={0} aria-label={describe(position)} onFocus={() => { setSelectedTier(position.range.tierId); setCallout(true) }}>
         </polygon>
       })}
-      {edge !== null && <g className="chart-edge" pointerEvents="none">
+      {/* The asked side is shaded and the edge is named on the axis, so the line reads as the question. */}
+      {edge !== null && answer !== null && <g className="chart-edge" pointerEvents="none">
+        {/* A polygon, not a rect: rects are your order's bars. */}
+        <polygon points={`${x(edge)},${TOP} ${below ? LEFT : width - RIGHT},${TOP} ${below ? LEFT : width - RIGHT},${axis} ${x(edge)},${axis}`} />
         <line x1={x(edge)} x2={x(edge)} y1={axis} y2={TOP} />
+        <text x={x(edge)} y={HEIGHT - 28} textAnchor="middle">{formatPercentage(edge, 3)}</text>
       </g>}
       {overflow.map(range => <text key={`label-${range.tierId}`} x={tailX(sideOf(range)) + TAIL / 2} y={HEIGHT - 28} textAnchor="middle">
         {sideOf(range) === 'low' ? '<' : '≥'}</text>)}
+      {crowdLine && <path className="chart-crowd-curve" pointerEvents="none"
+        d={crowdLine.buckets.map((bucket, index) => `${index ? 'L' : 'M'}${x(bucket.lower)},${y(bucket.density)} L${x(bucket.upper)},${y(bucket.density)}`).join(' ')} />}
       {mine && <path d={line} className="chart-curve" pointerEvents="none" />}
       <line x1={LEFT} x2={width - RIGHT} y1={axis} y2={axis} className="chart-axis" />
-      {ticks.map(fraction => <text key={fraction} x={plotLeft + fraction * plotWidth} y={HEIGHT - 28}
+      {ticks.filter(fraction => edge === null || answer === null || Math.abs(plotLeft + fraction * plotWidth - x(edge)) > 44).map(fraction => <text key={fraction} x={plotLeft + fraction * plotWidth} y={HEIGHT - 28}
         textAnchor={fraction === 0 ? 'start' : fraction === 1 ? 'end' : 'middle'}>
         {formatPercentage(low + span * fraction, 3)}
       </text>)}
@@ -237,6 +260,7 @@ export function PositionChart({ ranges, quantities, coefficients, crowd, payout,
       {mine && <span className={crowdAll.length ? 'distribution-bars distribution-order' : 'distribution-bars'}>{crowdAll.length ? 'Your order' : 'NFT positions'}</span>}
       {crowdAll.length > 0 && (mine || payout) && <span className="distribution-crowd">Crowd</span>}
       {payout && <span className="distribution-payout">Ratified payout</span>}
+      {crowdLine && crowdCurve && <span className="distribution-crowd-curve">Crowd curve, {crowdCurve.complete ? `${crowdCurve.covered} of ${crowdCurve.minted}` : `first ${crowdCurve.covered}`} positions</span>}
     </div>
     <div className="distribution-selection" role="status" aria-label="Selected range">
       {selected ? describe(selected) : 'NFT quantities cannot be displayed.'}

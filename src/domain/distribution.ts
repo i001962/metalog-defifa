@@ -138,3 +138,25 @@ export function densityBuckets(coefficients: Coefficients, count = 240, bounds?:
   }
   return { low, high, buckets, visibleMass: previousCdf - lowerCdf, peak: Math.max(...buckets.map(bucket => bucket.density)) }
 }
+
+/** One curve in a crowd, weighted by the positions it bought. */
+export type MixtureComponent = { coefficients: Coefficients; weight: number }
+
+/** The crowd's chance of an outcome at or below a value: the weighted average of each curve's CDF. */
+export function mixtureCdf(components: readonly MixtureComponent[], outcome: number): number {
+  const total = components.reduce((sum, item) => sum + item.weight, 0)
+  if (!(total > 0)) throw new Error('A crowd curve needs positive weight.')
+  return components.reduce((sum, item) => sum + item.weight * cdf(item.coefficients, outcome), 0) / total
+}
+
+/** The crowd curve on a fixed grid: weighted average of each curve's interval densities. */
+export function mixtureBuckets(components: readonly MixtureComponent[], count: number, bounds: { low: number; high: number }) {
+  const total = components.reduce((sum, item) => sum + item.weight, 0)
+  if (!(total > 0)) throw new Error('A crowd curve needs positive weight.')
+  const parts = components.map(item => ({ weight: item.weight / total, buckets: densityBuckets(item.coefficients, count, bounds).buckets }))
+  const buckets = parts[0].buckets.map((bucket, index) => {
+    const mass = parts.reduce((sum, part) => sum + part.weight * part.buckets[index].mass, 0)
+    return { lower: bucket.lower, upper: bucket.upper, mass, density: mass / (bucket.upper - bucket.lower) }
+  })
+  return { buckets, peak: Math.max(...buckets.map(bucket => bucket.density)) }
+}

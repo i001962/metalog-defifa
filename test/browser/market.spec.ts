@@ -22,6 +22,9 @@ test('manual NFT buckets update chart, stake and export and recover from invalid
   expect(finiteBars[9].height).toBeGreaterThan(finiteBars[8].height)
   expect(finiteBars[9].height).toBeGreaterThan(finiteBars[10].height)
   expect(finiteBars.every(bar => Math.abs(bar.width - finiteBars[9].width) < 0.01)).toBe(true)
+  // The asked edge takes its own axis label; move it to the far right so the center tick shows.
+  const bounds = (await chart.boundingBox())!
+  await page.mouse.move(bounds.x + bounds.width - 2, bounds.y + bounds.height / 2)
   const leftTick = Number(await chart.getByText('-9.5%', { exact: true }).getAttribute('x'))
   const rightTick = Number(await chart.getByText('+9.5%', { exact: true }).getAttribute('x'))
   const centerTick = Number(await chart.getByText('0%', { exact: true }).getAttribute('x'))
