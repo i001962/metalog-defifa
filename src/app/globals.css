@@ -373,7 +373,7 @@ section.forecast[aria-labelledby="your-view"] { margin-top: 0; }
 .distribution-order::before { background: #2a234280; }
 .forecast[data-browsing="true"] { grid-template-columns: 1fr; }
 .forecast[data-browsing="true"] .forecast-side { display: none; }
-.data-links { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; margin: 10px 0 24px; font-size: 13px; color: var(--muted); }
+.data-links { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 10px 0 0; font-size: 13px; color: var(--muted); }
 .lamp-note { font-size: 12px; line-height: 16px; min-height: 16px; white-space: nowrap; color: var(--muted); }
 /* Phones: the note may wrap, so it keeps two lines and the wire moves down to match. */
 @media (max-width: 620px) {

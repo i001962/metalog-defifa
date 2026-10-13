@@ -77,6 +77,12 @@ export function MarketView({ chainId, projectId }: { chainId: number; projectId:
   const mine: Record<number, number> = {}
   for (const token of lifecycle.account?.toLowerCase() === address?.toLowerCase() ? lifecycle.inventory.tokens : []) mine[token.tierId] = (mine[token.tierId] ?? 0) + 1
   const owned = Object.keys(mine).length > 0
+  // Market exports sit with the entry downloads while entering, and on Rules for the whole game.
+  const exports = (label: string, contract: boolean) => <p className="data-links">{label} <span className="pip" aria-hidden="true">|</span>
+    <a href={`/api/markets/${chainId}/${projectId}`}>JSON</a><span className="pip" aria-hidden="true">|</span>
+    <a href={`/api/markets/${chainId}/${projectId}?format=sipmath`}>SIPmath</a>
+    {contract && <><span className="pip" aria-hidden="true">|</span>
+      <a href={`${chainForId(chainId).blockExplorers.default.url}/address/${market.hook}`} target="_blank" rel="noreferrer">View contract</a></>}</p>
   // While the game plays out, a book reprices positions; it closes at observation end.
   const inPlay = market.stage === 'trading' || market.stage === 'settlement'
   const book = inPlay ? readBook(market) : null
@@ -117,14 +123,9 @@ export function MarketView({ chainId, projectId }: { chainId: number; projectId:
     </div>
     <div role="tabpanel" id="panel-market" aria-labelledby="tab-market" hidden={shown !== 'market'}>
       <ForecastEditor key={`${chainId}:${projectId}`} definition={market.definition} market={market} current={current} onSubmitted={refresh}
-        crowd={supplies} payout={data.ratifiedPayoutShares} live={bookOdds}
+        crowd={supplies} payout={data.ratifiedPayoutShares} live={bookOdds} exports={exports('Market', false)}
         below={<>
           {inPlay && <OrderBook market={market} books={book?.books ?? null} sample={!!book?.sample} owned={mine} />}
-          {/* The chart carries each range's share; the data stays one click away. */}
-          <p className="data-links">Export <span className="pip" aria-hidden="true">|</span>
-            <a href={`/api/markets/${chainId}/${projectId}`}>JSON</a><span className="pip" aria-hidden="true">|</span>
-            <a href={`/api/markets/${chainId}/${projectId}?format=sipmath`}>SIPmath</a><span className="pip" aria-hidden="true">|</span>
-            <a href={`${chainForId(chainId).blockExplorers.default.url}/address/${market.hook}`} target="_blank" rel="noreferrer">View contract</a></p>
           <Activity market={market} active={shown === 'market'} />
         </>} />
     </div>
@@ -135,6 +136,7 @@ export function MarketView({ chainId, projectId }: { chainId: number; projectId:
       inventoryPaged={!!page.tokenCursor} scorecardsPaged={!!page.scorecardCursor} />
     <div role="tabpanel" id="panel-rules" aria-labelledby="tab-rules" hidden={shown !== 'rules'}>
       <MarketFacts definition={market.definition} open />
+      {exports('Export market', true)}
     </div>
   </div>
 }

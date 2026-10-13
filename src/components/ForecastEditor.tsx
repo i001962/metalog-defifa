@@ -14,13 +14,15 @@ import { PositionChart } from './PositionChart'
 const COEFFICIENT_LABELS = ['Median', 'Base spread', 'Tail asymmetry', 'Middle spread', 'Shape asymmetry', 'Tail spread']
 type EditorMode = 'moments' | 'coefficients' | 'ranges'
 
-export function ForecastEditor({ definition, market, current = true, onSubmitted, crowd, payout, live, below }: {
+export function ForecastEditor({ definition, market, current = true, onSubmitted, crowd, payout, live, exports, below }: {
   definition: MarketDefinition
   /** Live circulating supply per range, drawn behind your curve. */
   crowd?: number[]
   payout?: number[] | null
   /** Book-implied odds per range while the game plays out. */
   live?: (number | null)[] | null
+  /** Market data exports, shown with the draft downloads. */
+  exports?: ReactNode
   /** Shown under the chart. */
   below?: ReactNode
   market?: MarketSnapshot
@@ -201,6 +203,7 @@ export function ForecastEditor({ definition, market, current = true, onSubmitted
         <button className="quiet" disabled={!model.preview} onClick={() => model.preview && downloadJson(model.preview, 'metalog-forecast.json')}>Download draft</button>
         <button className="quiet" disabled={!model.preview} onClick={downloadSIPmath}>Download SIPmath</button>
       </div>
+      {exports}
       {current && closed && <p className="hint">{market.stage === 'countdown' ? 'Entry has not opened.' : 'Entry is closed.'}</p>}
       {!market && <p className="hint">Example only. No positions are minted.</p>}
       {error && <p className="error" role="alert">{error}</p>}
