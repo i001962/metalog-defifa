@@ -81,17 +81,18 @@ export function CreateMarket({ now }: { now: number }) {
     try { return { address: parseDefaultDelegate(delegate), error: null } }
     catch (cause) { return { address: undefined, error: cause instanceof Error ? cause.message : 'Enter a valid delegate address.' } }
   }, [delegate])
+  const priceError = !/^(?:\d+(?:\.\d{0,18})?|\.\d{1,18})$/.test(price) ? 'Enter an ETH price with up to 18 decimal places.'
+    : parseEther(price) < MIN_NEW_UNIT_PRICE_WEI ? `Set at least ${formatEther(MIN_NEW_UNIT_PRICE_WEI)} ETH per position.` : null
   const draft = useMemo(() => {
     try {
-      if (!/^(?:\d+(?:\.\d{0,18})?|\.\d{1,18})$/.test(price)) throw new Error('Enter an ETH price with up to 18 decimal places.')
-      if (parseEther(price) < MIN_NEW_UNIT_PRICE_WEI) throw new Error(`Set at least ${formatEther(MIN_NEW_UNIT_PRICE_WEI)} ETH per position.`)
+      if (priceError) throw new Error(priceError)
       if (rangeError || !rangeDraft.configuration) throw new Error(rangeError || 'Check the ranges.')
       if (delegateDraft.error) throw new Error(delegateDraft.error)
       const definition = validateMarket({ schemaVersion: 1, settlement: 'defifa-scorecard', prompt, source, resolutionRule: rule,
         entryOpensAt: seconds(open), entryClosesAt: seconds(close), resolvesAt: seconds(end), ...rangeDraft.configuration, defaultAttestationDelegate: delegateDraft.address, unitPriceWei: parseEther(price).toString() })
       return { definition, error: null }
     } catch (cause) { return { definition: null, error: cause instanceof Error ? cause.message : 'Check the market details.' } }
-  }, [prompt, source, rule, open, close, end, rangeDraft, rangeError, delegateDraft, price])
+  }, [prompt, source, rule, open, close, end, rangeDraft, rangeError, delegateDraft, price, priceError])
   function selectRangeMode(next: RangeMode) {
     if (next === 'advanced' && boundaries === null) {
       const seed = rangeDraft.ranges ?? lastRanges.simple!
@@ -246,7 +247,9 @@ export function CreateMarket({ now }: { now: number }) {
         <label className="field"><span>Ranges</span><input type="number" min={MIN_RANGE_COUNT} max={MAX_RANGE_COUNT} step={2} required value={rangeCount} onChange={event => setRangeCount(event.target.value)} /></label>
         <label className="field"><span>Range width (%)</span><input type="number" min={MIN_RANGE_WIDTH} max={MAX_RANGE_WIDTH} step={MIN_RANGE_WIDTH} required value={rangeWidth} onChange={event => setRangeWidth(event.target.value)} /></label>
       </>}
-      <label className="field"><span>Price per position (ETH)</span><input inputMode="decimal" required value={price} onChange={event => setPrice(event.target.value)} /></label>
+      <label className="field"><span id="price-label">Price per position (ETH)</span><input aria-labelledby="price-label" inputMode="decimal" required value={price}
+        aria-invalid={priceError !== null} aria-describedby={priceError ? 'price-error' : undefined} onChange={event => setPrice(event.target.value)} />
+        {priceError && <small id="price-error" className="error" role="alert">{priceError}</small>}</label>
     </div>
     {rangeMode === 'advanced' && <div className="range-presets">
       <div className="forecast-moments">
@@ -304,7 +307,7 @@ export function CreateMarket({ now }: { now: number }) {
       </div>
       {transactions.pending && <p className="hint" role="status">{transactions.canCreateNewMarket ? 'A previous transaction is still unresolved. This creates a separate market and keeps the earlier transaction available to check.' : 'An earlier transaction could not be identified. Check it before creating another market.'} <a href="#transaction-status">View pending transaction</a></p>}
       {attemptId && transactions.isCreationPending(attemptId) && <button type="button" disabled={busy || transactions.busy} onClick={() => setAttemptId(null)}>Create another market</button>}
-      {(error || (showValidation && draft.error && draft.error !== rangeError && draft.error !== delegateDraft.error)) && <p className="error" role="alert" style={{ marginTop: 14 }}>{error || draft.error}</p>}
+      {(error || (showValidation && draft.error && draft.error !== rangeError && draft.error !== delegateDraft.error && draft.error !== priceError)) && <p className="error" role="alert" style={{ marginTop: 14 }}>{error || draft.error}</p>}
     </div>
   </form>
 }

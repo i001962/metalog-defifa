@@ -69,7 +69,7 @@ test('the built website creates, enters, refunds, transfers, settles and claims 
     await page.getByLabel('Entry closes / observation starts (UTC)', { exact: true }).fill(date(start + 600))
     await page.getByLabel('Observation ends (UTC)', { exact: true }).fill(date(start + 900))
     await page.getByLabel('Ranges', { exact: true }).fill('3')
-    await page.getByLabel('Price per position (ETH)', { exact: true }).fill('0.0001')
+    await page.getByLabel('Price per position (ETH)', { exact: true }).fill('0.001')
     await page.getByRole('combobox', { name: 'Network', exact: true }).selectOption('84532')
     const receipt = await transact(page.getByRole('button', { name: 'Review new market', exact: true }), 'Create market')
     await expect(page).toHaveURL(/\/markets\/84532\/\d+$/)
