@@ -85,8 +85,6 @@ export function PositionChart({ ranges, quantities, coefficients, crowd, payout,
     mine ? columnDensity(range, positions?.[index]?.share ?? 0) : 0, columnDensity(range, crowdAll[index]?.share ?? 0), columnDensity(range, payout?.[index] ?? 0))
   const barTop = (position: NonNullable<typeof positions>[number]) => axis - tallest(position.range, ranges.indexOf(position.range)) / peak * plotHeight
   const barCenter = (position: NonNullable<typeof positions>[number]) => (column(position.range).left + column(position.range).right) / 2
-  // Your order sits inside the crowd's column so both stay readable.
-  const inset = crowdAll.length || payout ? .22 : 0
   const y = (value: number) => axis - value / peak * plotHeight
   // Interval averages preserve narrow spikes without inventing extra probability mass.
   const line = density?.buckets.map((bucket, index) => `${index ? 'L' : 'M'}${x(bucket.lower)},${y(bucket.density)} L${x(bucket.upper)},${y(bucket.density)}`).join(' ') ?? ''
@@ -166,14 +164,14 @@ export function PositionChart({ ranges, quantities, coefficients, crowd, payout,
         const { range } = position
         const height = position.density! / peak * plotHeight
         const left = x(range.lower!), full = x(range.upper!) - left
-        return <rect key={range.tierId} x={left + full * inset} y={axis - height}
-          width={full * (1 - 2 * inset)} height={height} className="chart-bar"
+        return <rect key={range.tierId} x={left + 1} y={axis - height}
+          width={Math.max(0, full - 2)} height={height} className="chart-bar"
           data-selected={selected?.range.tierId === range.tierId}
           tabIndex={0} aria-label={describe(position)} onFocus={() => { setSelectedTier(range.tierId); setCallout(true) }}>
         </rect>
       })}
       {tails.map(({ position, side }) => {
-        const left = tailX(side) + TAIL * inset, right = tailX(side) + TAIL * (1 - inset), top = axis - columnDensity(position.range, position.share) / peak * plotHeight
+        const left = tailX(side) + 1, right = tailX(side) + TAIL - 1, top = axis - columnDensity(position.range, position.share) / peak * plotHeight
         // Polygons, not rects: rects are the finite ranges.
         return <polygon key={position.range.tierId} className="chart-bar chart-tail" data-selected={selected?.range.tierId === position.range.tierId}
           points={`${left},${axis} ${left},${top} ${right},${top} ${right},${axis}`}
