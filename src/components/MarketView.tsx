@@ -11,14 +11,13 @@ import { useWallet } from '@/providers/Providers'
 import { ForecastEditor } from './ForecastEditor'
 import { MarketFacts } from './MarketFacts'
 import { MarketLifecycle } from './MarketLifecycle'
-import { Entries } from './Entries'
 import { CrowdChart } from './CrowdChart'
 import { Activity } from './Activity'
 import { StageLamps } from './StageLamps'
 import { ChainIcon } from './ChainIcon'
 import type { MarketSnapshot } from '@/lib/defifa'
 
-type Tab = 'view' | 'crowd' | 'nfts' | 'results' | 'entries' | 'rules'
+type Tab = 'view' | 'crowd' | 'nfts' | 'results' | 'rules'
 /** The one panel that matters most in each stage. */
 const FOCUS: Record<MarketSnapshot['stage'], Tab> = { countdown: 'view', entry: 'view', refund: 'nfts', trading: 'crowd', settlement: 'results', complete: 'crowd', 'no-contest': 'nfts' }
 
@@ -73,7 +72,6 @@ export function MarketView({ chainId, projectId }: { chainId: number; projectId:
     { id: 'crowd', label: 'Crowd', count: distribution.totalSupply },
     { id: 'nfts', label: 'Your NFTs', count: address && lifecycle.account?.toLowerCase() === address.toLowerCase() ? lifecycle.inventory.totalOwned : undefined },
     { id: 'results', label: 'Results', count: lifecycle.scorecards.length ? String(lifecycle.scorecards.length) : undefined },
-    { id: 'entries', label: 'Entries' },
     { id: 'rules', label: 'Rules' },
   ]
   return <div className="market">
@@ -129,9 +127,6 @@ export function MarketView({ chainId, projectId }: { chainId: number; projectId:
       loading={query.isFetching} error={query.error?.message} onRefresh={refresh}
       onPage={(kind, cursor) => setPagination({ ...page, blockNumber: market.blockNumber, [kind === 'inventory' ? 'tokenCursor' : 'scorecardCursor']: cursor })}
       inventoryPaged={!!page.tokenCursor} scorecardsPaged={!!page.scorecardCursor} />
-    <div role="tabpanel" id="panel-entries" aria-labelledby="tab-entries" hidden={shown !== 'entries'}>
-      <Entries key={`entries:${chainId}:${projectId}`} market={market} />
-    </div>
     <div role="tabpanel" id="panel-rules" aria-labelledby="tab-rules" hidden={shown !== 'rules'}>
       <MarketFacts definition={market.definition} open />
     </div>

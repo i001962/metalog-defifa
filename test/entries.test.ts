@@ -5,7 +5,7 @@ import { allocatePositions } from '../src/domain/allocation'
 import type { Coefficients } from '../src/domain/distribution'
 import { marketRanges, type MarketDefinition } from '../src/domain/market'
 import { DEFIFA_ABI, deploymentForChain, NATIVE_TOKEN, type MarketSnapshot } from '../src/lib/defifa'
-import { readEntryHistory } from '../src/lib/entries'
+import { readEntry, readEntryHistory } from '../src/lib/entries'
 
 const chainId = 8453
 const d = deploymentForChain(chainId)
@@ -133,5 +133,14 @@ describe('public entry receipt evidence', () => {
     await expect(readEntryHistory(client, market, `${number + 1n}:0`)).rejects.toThrow('outside')
     mocks.getLogs.mockRejectedValueOnce(new Error('rate limit'))
     await expect(readEntryHistory(client, market)).rejects.toThrow('rate limit')
+  })
+  it('looks up one entry by transaction with the same checks as history pages', async () => {
+    const { client } = fixture()
+    const [listed] = (await readEntryHistory(client, market)).entries
+    expect(await readEntry(client, market, hash(1))).toEqual(listed)
+    const { client: noMints } = fixture({ missingMint: true, transactions: 1 })
+    const receipt = await noMints.getTransactionReceipt({ hash: hash(1) })
+    ;(receipt.logs as unknown[]).length = 0
+    await expect(readEntry(noMints, market, hash(1))).rejects.toThrow('did not mint')
   })
 })

@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test'
 import type { LifecycleSnapshot } from '../../src/lib/defifa-lifecycle'
-import type { EntryHistoryEntry, EntryHistoryPage } from '../../src/lib/entries'
+import type { EntryHistoryEntry } from '../../src/lib/entries'
+import type { ActivityPage } from '../../src/lib/activity'
 import { EXAMPLE_MARKET } from '../../src/lib/example'
 import { marketRanges, validateMarket } from '../../src/domain/market'
 
@@ -18,63 +19,65 @@ const market: LifecycleSnapshot = {
 }
 const entry: EntryHistoryEntry = { status: 'verified-curve', transactionHash: hash, blockNumber: '95', timestamp: definition.entryOpensAt + 600,
   account, beneficiary: account, stakeWei: '4000000000000', tokenIds: ['1000000001', '2000000001', '2000000002', '3000000001'], quantities: [1, 2, 1], coefficients: [0, 1, 0, 0, 0, 0] }
-const history: EntryHistoryPage = { schema: 'metalog.entries.v1', chainId: 8453, projectId: '27', blockNumber: '100', entries: [entry],
-  scannedFromBlock: '91', scannedToBlock: '100', complete: false, nextCursor: '90:2147483647' }
+const manualHash = `0x${'cd'.repeat(32)}` as const
+const activity: ActivityPage = { schema: 'metalog.activity.v1', blockNumber: '100', complete: true, nextCursor: null, events: [
+  { kind: 'exit', transactionHash: `0x${'ef'.repeat(32)}`, blockNumber: '99', timestamp: definition.resolvesAt, account, quantities: [0, 1, 0] },
+  { kind: 'entry', transactionHash: hash, blockNumber: '95', timestamp: definition.entryOpensAt + 600, account, quantities: [1, 2, 1] },
+  { kind: 'entry', transactionHash: manualHash, blockNumber: '90', timestamp: definition.entryOpensAt + 300, account, quantities: [0, 4, 0] },
+] }
 
-test('entries are lazy, auditable, pinned when paginating, and refresh to a new snapshot', async ({ page }) => {
-  let reads = 0
-  const requests: URL[] = []
+test('crowd activity lists entries and exits; an opened entry shows its checked record', async ({ page }) => {
+  const entryReads: URL[] = []
   await page.route('**/api/markets/8453/27/play?*', route => route.fulfill({ json: market }))
+  await page.route('**/api/markets/8453/27/activity?*', route => {
+    expect(new URL(route.request().url()).searchParams.get('blockNumber')).toBe('100')
+    return route.fulfill({ json: activity })
+  })
   await page.route('**/api/markets/8453/27/entries?*', route => {
-    const url = new URL(route.request().url()); requests.push(url); reads++
-    if (url.searchParams.has('cursor')) {
-      expect(url.searchParams.get('blockNumber')).toBe('100')
-      expect(url.searchParams.get('cursor')).toBe('90:2147483647')
-      return route.fulfill({ json: { ...history, entries: [{ ...entry, status: 'verified-manual', transactionHash: `0x${'cd'.repeat(32)}`, tokenIds: ['2000000001', '2000000002', '2000000003', '2000000004'], quantities: [0, 4, 0] }], scannedFromBlock: '80', scannedToBlock: '90', nextCursor: null, complete: true } })
-    }
-    return route.fulfill({ json: { ...history, blockNumber: reads === 1 ? '100' : '101' } })
+    const url = new URL(route.request().url()); entryReads.push(url)
+    expect(url.searchParams.get('blockNumber')).toBe('100')
+    return route.fulfill({ json: { entry: url.searchParams.get('tx') === manualHash
+      ? { ...entry, status: 'verified-manual', transactionHash: manualHash, tokenIds: ['2000000001', '2000000002', '2000000003', '2000000004'], quantities: [0, 4, 0] }
+      : entry } })
   })
   await page.goto('/markets/8453/27')
   await expect(page.getByRole('heading', { name: definition.prompt, exact: true })).toBeVisible()
-  expect(reads).toBe(0)
-  await page.getByRole('tab', { name: 'Entries', exact: true }).click()
-  await page.getByRole('button', { name: 'View entries', exact: true }).click()
-  const section = page.getByRole('region', { name: 'Entries', exact: true })
-  await expect(section.getByText('Snapshot at block 100.', { exact: false })).toBeVisible()
-  await section.locator('.entry-record > summary').click()
-  await expect(section.getByRole('img', { name: 'Submitted curve and minted positions' })).toBeVisible()
-  await expect(section.getByText('a-coefficients:', { exact: false })).toContainText('[0,1,0,0,0,0]')
-  await expect(section.getByRole('link', { name: 'View mint receipt' })).toHaveAttribute('href', `https://basescan.org/tx/${hash}`)
-  await expect(section.getByText('Showing the last valid allocation while you edit.', { exact: true })).toHaveCount(0)
-  await section.getByText('Minted token IDs', { exact: true }).click()
-  await expect(section.getByText(entry.tokenIds.join(', '), { exact: true })).toBeVisible()
-  await section.getByRole('button', { name: 'Load older entries', exact: true }).click()
-  await section.locator('.entry-record > summary').click()
-  await expect(section.getByText('The counts were set by range; the curve is reference evidence.', { exact: true })).toBeVisible()
-  await expect(section.getByText('Reference curve', { exact: true })).toBeVisible()
-  await expect(section.getByText('Reached the start of the entry period.', { exact: true })).toBeVisible()
-  await section.getByRole('button', { name: 'Refresh entries', exact: true }).click()
-  await expect(section.getByText('Snapshot at block 101.', { exact: false })).toBeVisible()
-  expect(requests.at(-1)!.searchParams.has('cursor')).toBe(false)
+  await expect(page.getByRole('tab', { name: 'Entries', exact: true })).toHaveCount(0)
+  await page.getByRole('tab', { name: /^Crowd/ }).click()
+  const feed = page.getByRole('region', { name: 'Activity', exact: true })
+  const rows = feed.getByRole('listitem')
+  await expect(rows).toHaveCount(3)
+  await expect(rows.nth(0)).toContainText('exited with 1 NFT')
+  await expect(rows.nth(1)).toContainText('entered with 4 NFTs')
+  expect(entryReads).toHaveLength(0)
+  await rows.nth(1).locator('summary').click()
+  await expect(rows.nth(1).getByRole('img', { name: 'Submitted curve and minted positions' })).toBeVisible()
+  expect(entryReads.at(-1)!.searchParams.get('tx')).toBe(hash)
+  await expect(rows.nth(1).getByRole('link', { name: 'View mint receipt' })).toHaveAttribute('href', `https://basescan.org/tx/${hash}`)
+  await expect(rows.nth(1).getByText('Showing the last valid allocation while you edit.', { exact: true })).toHaveCount(0)
+  await rows.nth(1).getByText('Raw record', { exact: true }).click()
+  await expect(rows.nth(1).getByText('a-coefficients:', { exact: false })).toContainText('[0,1,0,0,0,0]')
+  await expect(rows.nth(1).getByText(`Token IDs: ${entry.tokenIds.join(', ')}`, { exact: true })).toBeVisible()
+  await rows.nth(2).locator('summary').click()
+  await expect(rows.nth(2).getByText('Reference curve', { exact: true })).toBeVisible()
+  await expect(rows.nth(0).locator('summary')).toHaveCount(0)
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
 })
 
 test('missing curves and read failures are explicit and never replaced with fabricated forecasts', async ({ page }) => {
   let reads = 0
   await page.route('**/api/markets/8453/27/play?*', route => route.fulfill({ json: market }))
-  await page.route('**/api/markets/8453/27/entries?*', route => ++reads <= 2
+  await page.route('**/api/markets/8453/27/activity?*', route => route.fulfill({ json: activity }))
+  await page.route('**/api/markets/8453/27/entries?*', route => ++reads === 1
     ? route.fulfill({ status: 503, json: { error: 'Entry history could not be verified. Try again.' } })
-    : route.fulfill({ json: { ...history, entries: [{ ...entry, status: 'unsupported', coefficients: null, beneficiary: null, stakeWei: null, reason: 'Wrapped calls are not decoded.' }] } }))
+    : route.fulfill({ json: { entry: { ...entry, status: 'unsupported', coefficients: null, beneficiary: null, stakeWei: null, reason: 'Wrapped calls are not decoded.' } } }))
   await page.goto('/markets/8453/27')
-  await page.getByRole('tab', { name: 'Entries', exact: true }).click()
-  await page.getByRole('button', { name: 'View entries', exact: true }).click()
-  const section = page.getByRole('region', { name: 'Entries', exact: true })
-  await expect(section.getByRole('alert')).toHaveText('Entry history could not be verified. Try again.')
-  await expect(section.getByText('No entries yet.', { exact: true })).toHaveCount(0)
-  await section.getByRole('button', { name: 'Retry entries', exact: true }).click()
-  await expect(section.locator('.entry-record > summary')).toContainText('Stake unavailable')
-  await section.locator('.entry-record > summary').click()
-  await expect(section.getByText('Wrapped calls are not decoded.', { exact: true })).toBeVisible()
-  await expect(section.getByRole('img')).toHaveCount(0)
-  await expect(section.getByText('Multiple recipients; see the receipt.', { exact: true })).toBeVisible()
+  await page.getByRole('tab', { name: /^Crowd/ }).click()
+  const row = page.getByRole('region', { name: 'Activity', exact: true }).getByRole('listitem').nth(1)
+  await row.locator('summary').click()
+  await expect(row.getByRole('alert')).toHaveText('Entry history could not be verified. Try again.')
+  await row.getByRole('button', { name: 'Retry', exact: true }).click()
+  await expect(row.getByText('Wrapped calls are not decoded.', { exact: true })).toBeVisible()
+  await expect(row.getByRole('img')).toHaveCount(0)
+  await expect(row.getByText('Curve unavailable, amount unavailable, multiple recipients', { exact: true })).toBeVisible()
 })

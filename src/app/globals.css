@@ -159,8 +159,7 @@ dialog .actions { justify-content: flex-end; }
 .distribution-overflow { display: flex; flex-wrap: wrap; gap: 4px 18px; margin-block: 6px 14px; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
 .inventory-table input[type="checkbox"] { width: 20px; height: 20px; margin: 0; vertical-align: middle; }
 .scorecard summary { overflow-wrap: anywhere; }
-.entry-record { padding-block: 12px; border-top: 1px solid var(--line); }
-.entry-record summary, .entry-coefficients { overflow-wrap: anywhere; }
+.entry-coefficients { overflow-wrap: anywhere; }
 
 .range-preview-finite { position: relative; padding-top: 12px; }
 .range-preview-numbers { position: absolute; top: 24px; inset-inline: 0; pointer-events: none; font-size: 12px; }
@@ -324,7 +323,16 @@ section.forecast[aria-labelledby="your-view"] { margin-top: 0; }
 .activity { margin-top: 32px; }
 .activity h3 { font: 600 18px/1.3 var(--serif); }
 .activity-feed { list-style: none; margin: 0 0 14px; padding: 0; }
-.activity-feed li { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 14px; padding: 10px 0; border-bottom: 1px solid #e8cfa9; font-size: 14px; }
+.activity-feed li { border-bottom: 1px solid #e8cfa9; font-size: 14px; }
+.activity-line { display: grid; grid-template-columns: 14px auto 1fr auto; align-items: center; gap: 14px; padding: 10px 0; }
+.activity-toggle { color: var(--muted); transition: transform .15s; }
+.activity-feed details[open] .activity-toggle { transform: rotate(90deg); }
+.activity-feed summary { cursor: pointer; list-style: none; }
+.activity-feed summary::-webkit-details-marker { display: none; }
+.activity-feed details { margin: 0; }
+.activity-feed summary { font-weight: 400; }
+.activity-feed details > .entry-detail, .activity-feed details > .hint, .activity-feed details > .actions { margin: 4px 0 18px 28px; }
+.entry-label { font: 600 16px/1.4 var(--serif); margin: 6px 0 0; }
 .activity-feed li[data-kind="entry"] .range-strip-mini i { background: var(--accent); }
 .activity-feed li[data-kind="exit"] .range-strip-mini i { background: var(--blue); }
 .activity-feed .range-strip-mini { margin: 0; width: 90px; }

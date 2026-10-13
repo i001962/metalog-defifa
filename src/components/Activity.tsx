@@ -1,9 +1,11 @@
 'use client'
 
-import { useEffect } from 'react'
-import { useInfiniteQuery } from '@tanstack/react-query'
+import { useEffect, useState } from 'react'
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import type { MarketSnapshot } from '@/lib/defifa'
-import type { ActivityPage } from '@/lib/activity'
+import type { ActivityEvent, ActivityPage } from '@/lib/activity'
+import type { EntryHistoryEntry } from '@/lib/entries'
+import { EntryDetail } from './EntryDetail'
 import { chainForId } from '@/lib/wallet'
 import { RangeStrip } from './RangeStrip'
 
@@ -40,18 +42,44 @@ export function Activity({ market, active }: { market: MarketSnapshot; active: b
     {query.error && <p className="error" role="alert">{query.error.message} <button type="button" onClick={() => void query.refetch()}>Retry</button></p>}
     {query.isPending && active && <p className="hint" role="status">Reading activity…</p>}
     <ol className="activity-feed">
-      {events.map(event => {
-        const count = event.quantities.reduce((sum, quantity) => sum + quantity, 0)
-        return <li key={`${event.transactionHash}:${event.kind}`} data-kind={event.kind}>
-          <RangeStrip values={event.quantities} />
-          <span><a href={`${explorer}/address/${event.account}`} target="_blank" rel="noreferrer">{short(event.account)}</a>
-            {event.kind === 'entry' ? ' entered with ' : ' exited with '}<strong>{count}</strong> NFT{count === 1 ? '' : 's'}</span>
-          <a className="activity-time" href={`${explorer}/tx/${event.transactionHash}`} target="_blank" rel="noreferrer">{ago(event.timestamp)}</a>
-        </li>
-      })}
+      {events.map(event => <ActivityRow key={`${event.transactionHash}:${event.kind}`} event={event} market={market} explorer={explorer} />)}
     </ol>
     {query.data && !events.length && !query.hasNextPage && <p className="hint">No entries or exits yet.</p>}
     {query.hasNextPage && <button type="button" disabled={query.isFetchingNextPage} onClick={() => void query.fetchNextPage()}>
       {query.isFetchingNextPage ? 'Reading…' : events.length ? 'Older activity' : 'Check earlier blocks'}</button>}
   </section>
+}
+
+function ActivityRow({ event, market, explorer }: { event: ActivityEvent; market: MarketSnapshot; explorer: string }) {
+  const [open, setOpen] = useState(false)
+  const count = event.quantities.reduce((sum, quantity) => sum + quantity, 0)
+  const line = <>
+    <span className="activity-toggle" aria-hidden="true">{event.kind === 'entry' ? '▸' : ''}</span>
+    <RangeStrip values={event.quantities} />
+    <span><a href={`${explorer}/address/${event.account}`} target="_blank" rel="noreferrer">{short(event.account)}</a>
+      {event.kind === 'entry' ? ' entered with ' : ' exited with '}<strong>{count}</strong> NFT{count === 1 ? '' : 's'}</span>
+    <a className="activity-time" href={`${explorer}/tx/${event.transactionHash}`} target="_blank" rel="noreferrer">{ago(event.timestamp)}</a>
+  </>
+  if (event.kind === 'exit') return <li data-kind="exit"><div className="activity-line">{line}</div></li>
+  return <li data-kind="entry"><details onToggle={element => setOpen(element.currentTarget.open)}>
+    <summary className="activity-line">{line}</summary>
+    {open && <EntryRecord event={event} market={market} explorer={explorer} />}
+  </details></li>
+}
+
+/** Read only when a row is opened; the same checks as the entry history API. */
+function EntryRecord({ event, market, explorer }: { event: ActivityEvent; market: MarketSnapshot; explorer: string }) {
+  const query = useQuery({
+    queryKey: ['market-entry', market.chainId, market.projectId, event.transactionHash],
+    queryFn: async ({ signal }) => {
+      const params = new URLSearchParams({ blockNumber: market.blockNumber, tx: event.transactionHash })
+      const response = await fetch(`/api/markets/${market.chainId}/${market.projectId}/entries?${params}`, { signal })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || 'Entry could not be verified.')
+      return data.entry as EntryHistoryEntry
+    }, staleTime: Infinity, refetchOnWindowFocus: false, retry: false,
+  })
+  if (query.isPending) return <p className="hint" role="status">Checking entry receipt…</p>
+  if (query.error) return <div className="actions"><p className="error" role="alert">{query.error.message}</p><button type="button" onClick={() => void query.refetch()}>Retry</button></div>
+  return <EntryDetail entry={query.data} market={market} explorer={explorer} />
 }

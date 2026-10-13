@@ -109,6 +109,16 @@ async function verifyEntryTransaction(client: PublicClient, market: MarketSnapsh
   return entry
 }
 
+/** One entry by transaction, with the same checks as the history pages. */
+export async function readEntry(client: PublicClient, market: MarketSnapshot, transactionHash: Hex): Promise<EntryHistoryEntry> {
+  await assertChain(client, market.chainId)
+  const receipt = await client.getTransactionReceipt({ hash: transactionHash })
+  const mints = receiptMints(market, receipt)
+  if (!mints.length || receipt.blockNumber > BigInt(market.blockNumber)) throw new Error('This transaction did not mint positions in this market.')
+  return verifyEntryTransaction(client, market, { transactionHash, blockNumber: receipt.blockNumber, blockHash: receipt.blockHash,
+    transactionIndex: receipt.transactionIndex, args: mints[0] })
+}
+
 /** Public history proves original mint effects, never later ownership or a sale price. */
 export async function readEntryHistory(client: PublicClient, market: MarketSnapshot, cursor?: string): Promise<EntryHistoryPage> {
   await assertChain(client, market.chainId)
