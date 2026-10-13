@@ -106,7 +106,11 @@ export function PositionChart({ ranges, quantities, coefficients, crowd, crowdCu
   const describe = (position: NonNullable<typeof positions>[number]) => `${position.range.label}: ${position.quantity} NFTs (${(position.share * 100).toFixed(2)}%)`
   const instruction = submitted ? 'Submitted curve and minted positions.' : readOnly ? 'Showing the last valid allocation while you edit.'
     : interactive ? 'Drag to move the curve. Drag up to widen, down to narrow.' : 'Edit NFT counts in By range.'
-  const ticks = width < 520 ? [0, .5, 1] : [0, .25, .5, .75, 1]
+  // Every bar edge is labeled; on narrow or many-range charts every nth, keeping the last edge (about 52px a label).
+  const LABEL_SPACE = 52
+  const every = Math.max(1, Math.ceil(LABEL_SPACE / (plotWidth / Math.max(1, edges.length - 1))))
+  const ticks = edges.filter((edge, index) => index === edges.length - 1
+    || (index % every === 0 && Math.abs(x(edge) - x(edges[edges.length - 1])) >= LABEL_SPACE))
 
   function selectAt(clientX: number) {
     const bounds = element.current?.getBoundingClientRect()
@@ -228,7 +232,7 @@ export function PositionChart({ ranges, quantities, coefficients, crowd, crowdCu
         {/* A polygon, not a rect: rects are your order's bars. */}
         <polygon points={`${x(edge)},${TOP} ${below ? LEFT : width - RIGHT},${TOP} ${below ? LEFT : width - RIGHT},${axis} ${x(edge)},${axis}`} />
         <line x1={x(edge)} x2={x(edge)} y1={axis} y2={TOP} />
-        <text x={x(edge)} y={HEIGHT - 28} textAnchor="middle">{formatPercentage(edge, 3)}</text>
+        {!ticks.includes(edge) && <text x={x(edge)} y={HEIGHT - 28} textAnchor="middle">{formatPercentage(edge, 3)}</text>}
       </g>}
       {overflow.map(range => <text key={`label-${range.tierId}`} x={tailX(sideOf(range)) + TAIL / 2} y={HEIGHT - 28} textAnchor="middle">
         {sideOf(range) === 'low' ? '<' : '≥'}</text>)}
@@ -236,9 +240,9 @@ export function PositionChart({ ranges, quantities, coefficients, crowd, crowdCu
         d={crowdLine.buckets.map((bucket, index) => `${index ? 'L' : 'M'}${x(bucket.lower)},${y(bucket.density)} L${x(bucket.upper)},${y(bucket.density)}`).join(' ')} />}
       {mine && <path d={line} className="chart-curve" pointerEvents="none" />}
       <line x1={LEFT} x2={width - RIGHT} y1={axis} y2={axis} className="chart-axis" />
-      {ticks.filter(fraction => edge === null || answer === null || Math.abs(plotLeft + fraction * plotWidth - x(edge)) > 44).map(fraction => <text key={fraction} x={plotLeft + fraction * plotWidth} y={HEIGHT - 28}
-        textAnchor={fraction === 0 ? 'start' : fraction === 1 ? 'end' : 'middle'}>
-        {formatPercentage(low + span * fraction, 3)}
+      {ticks.filter(tick => edge === null || answer === null || tick === edge || Math.abs(x(tick) - x(edge)) > 44).map(tick => <text key={tick}
+        x={x(tick)} y={HEIGHT - 28} textAnchor="middle" className={tick === edge && answer !== null ? 'chart-tick-asked' : undefined}>
+        {formatPercentage(tick, 3)}
       </text>)}
       <text x={plotLeft + plotWidth / 2} y={HEIGHT - 6} textAnchor="middle">Outcome (%)</text>
     </svg>

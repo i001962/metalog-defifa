@@ -22,15 +22,11 @@ test('manual NFT buckets update chart, stake and export and recover from invalid
   expect(finiteBars[9].height).toBeGreaterThan(finiteBars[8].height)
   expect(finiteBars[9].height).toBeGreaterThan(finiteBars[10].height)
   expect(finiteBars.every(bar => Math.abs(bar.width - finiteBars[9].width) < 0.01)).toBe(true)
-  // The asked edge takes its own axis label; move it to the far right so the center tick shows.
-  const bounds = (await chart.boundingBox())!
-  await page.mouse.move(bounds.x + bounds.width - 2, bounds.y + bounds.height / 2)
+  // Axis labels sit on bar edges.
   const leftTick = Number(await chart.getByText('-9.5%', { exact: true }).getAttribute('x'))
   const rightTick = Number(await chart.getByText('+9.5%', { exact: true }).getAttribute('x'))
-  const centerTick = Number(await chart.getByText('0%', { exact: true }).getAttribute('x'))
   expect(Math.abs(finiteBars[0].x - leftTick)).toBeLessThanOrEqual(1)
   expect(Math.abs(finiteBars[18].x + finiteBars[18].width - rightTick)).toBeLessThanOrEqual(1)
-  expect(finiteBars[9].x + finiteBars[9].width / 2).toBeCloseTo(centerTick, 2)
   const center = chart.locator('rect').nth(9)
   const centerDetails = await center.getAttribute('aria-label')
   const selected = page.getByRole('status', { name: 'Selected range', exact: true })
