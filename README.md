@@ -11,6 +11,8 @@ npm run dev
 
 Open http://127.0.0.1:3020. Requires Node 22.16 or later. The example curve works without a wallet or RPC. This directory is an independent Next.js app.
 
+For design work on live games, run `npm run dev:live`. It serves `/api/markets` from metalog.money, because local server reads from Juicebox Center hit its public-origin rate limit. Local API changes do not apply in this mode.
+
 ## Hosting
 
 [Public example](https://metalog-production.up.railway.app/markets/example). Railway project `c708f483-caab-4951-bcd6-6becdc95a83e`, service `metalog`, uses the checked-in Dockerfile and `railway.json` to run the full standalone Next app. The configured site origin is `https://metalog.money`; Signa remains disabled until that origin is registered with Signa. The example does not mint positions.
