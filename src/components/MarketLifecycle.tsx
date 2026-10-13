@@ -211,7 +211,6 @@ export function MarketLifecycle({ lifecycle, panel, current, loading, error, onR
         {scorecardsPaged && <button type="button" disabled={loading || busy} onClick={() => onPage('scorecards')}>First results</button>}
         {lifecycle.scorecardsNextCursor && <button type="button" disabled={loading || busy} onClick={() => onPage('scorecards', lifecycle.scorecardsNextCursor!)}>Load more results</button>}
       </div>
-      {!lifecycle.scorecardsComplete && <p className="hint">Only part of the results history is shown.</p>}
       <details><summary>Propose a result</summary>
         <div className="mode-toggle" role="group" aria-label="Result payout controls">
           <button type="button" aria-pressed={resultView === 'weighted'} onClick={() => setResultView('weighted')}>Weighted</button>
