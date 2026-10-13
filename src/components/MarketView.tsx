@@ -86,15 +86,14 @@ export function MarketView({ chainId, projectId }: { chainId: number; projectId:
   ]
   return <div className="market">
     <header className="market-hero">
+      {previewing && <p className="preview-note" role="status">Preview, nothing can be sent <span className="pip" aria-hidden="true">|</span>
+        <button type="button" onClick={() => showStage(live!.market.stage)}>Back to live</button></p>}
       <StageLamps market={market} positions={distribution.totalSupply} onPreview={showStage} liveStage={previewing ? live!.market.stage : undefined} />
       <div className="market-title">
         <h1>{market.definition.prompt}</h1>
       </div>
     </header>
-    {previewing ? <div className="actions preview-bar" role="status">
-      <span>Preview <span className="pip" aria-hidden="true">|</span> nothing can be sent</span>
-      <button type="button" onClick={() => showStage(live!.market.stage)}>Back to live</button>
-    </div> : !current && <div className="actions" role="status">
+    {!previewing && !current && <div className="actions" role="status">
       <button type="button" disabled={query.isFetching} onClick={refresh}>Refresh to latest</button>
     </div>}
     <div className="tabs" role="tablist" aria-label="Market" onKeyDown={event => {

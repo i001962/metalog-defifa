@@ -197,7 +197,7 @@ dialog .actions { justify-content: flex-end; }
 /* Market page: one stage-focused panel at a time. */
 .site-header { border-bottom-color: #d9a774; }
 main:has(.market) { padding-top: 22px; }
-.market-hero { padding-bottom: 8px; }
+.market-hero { position: relative; padding-bottom: 8px; }
 .market-title { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 12px 40px; margin-top: 30px; }
 .market-hero h1 { font-size: clamp(22px, 2.4vw, 34px); margin-bottom: 10px; text-wrap: pretty; }
 @media (max-width: 620px) {
@@ -244,7 +244,9 @@ main:has(.market) { padding-top: 22px; }
 .lamp-pick:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .lamp:hover strong { text-decoration: underline; text-underline-offset: 3px; }
 .lamp[data-live="true"] circle { stroke: var(--accent); stroke-dasharray: 3 3; }
-.preview-bar { align-items: center; padding: 8px 12px; margin-top: 12px; border: 1px dashed var(--accent); color: var(--cta); font-weight: 600; font-size: 14px; }
+/* A quiet note above the lamps while a stage is previewed. */
+.preview-note { position: absolute; top: -20px; right: 0; margin: 0; font-size: 12px; line-height: 16px; color: var(--cta); }
+.preview-note button { min-height: 0; margin: 0; padding: 0; border: 0; background: none; font: inherit; color: inherit; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
 @keyframes flicker { 0%, 100% { opacity: 1; } 45% { opacity: .86; } 50% { opacity: .97; } 70% { opacity: .9; } }
 @media (prefers-reduced-motion: reduce) { .lamp[data-state="current"] circle { animation: none; } }
 
@@ -262,7 +264,7 @@ main:has(.market) { padding-top: 22px; }
 .forecast { display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, 360px); gap: 28px 40px; align-items: start; }
 section.forecast[aria-labelledby="your-view"] { margin-top: 0; }
 .forecast-canvas { min-width: 0; }
-.ticket { background: var(--surface); border: 1px solid var(--line); border-top: 4px solid var(--accent); padding: 20px 20px 18px; }
+.ticket { background: var(--surface); border: 1px solid var(--line); padding: 20px 20px 18px; }
 .forecast-side { display: grid; gap: 24px; align-content: start; min-width: 0; }
 .ticket h2 { font-size: 20px; margin-bottom: 14px; }
 .ticket .forecast-controls { margin-bottom: 16px; }
