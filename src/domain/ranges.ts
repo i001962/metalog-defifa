@@ -1,3 +1,5 @@
+import { cdf, fitMetalog, type Coefficients } from './distribution'
+
 export type RangeBin = {
   tierId: number
   /** null means the tier includes the entire lower or upper tail. */
@@ -226,4 +228,23 @@ export function rangeEdges(ranges: readonly RangeBin[]): number[] {
 /** The share of outcomes at or above an edge: every range that starts at or past it. */
 export function shareAtOrAbove(ranges: readonly RangeBin[], shares: readonly number[], edge: number): number {
   return ranges.reduce((sum, range, index) => range.lower !== null && range.lower >= edge ? sum + (shares[index] ?? 0) : sum, 0)
+}
+
+/** A smooth curve through the positions' cumulative share at each range edge, so only real positions shape it. */
+export function curveFromPositions(ranges: readonly RangeBin[], counts: readonly number[]): Coefficients | null {
+  const total = counts.reduce((sum, count) => sum + count, 0)
+  if (!(total > 0)) return null
+  return fitMetalog(rangeEdges(ranges).map(edge => ({ p: 1 - shareAtOrAbove(ranges, counts, edge) / total, value: edge })))
+}
+
+/** Share at or above any value: exact at range edges, spread within a range by the fitted curve's shape. */
+export function smoothShareAtOrAbove(ranges: readonly RangeBin[], counts: readonly number[], curve: Coefficients, outcome: number): number {
+  const total = counts.reduce((sum, count) => sum + count, 0)
+  if (!(total > 0)) return 0
+  const bin = binForOutcome(ranges, outcome)
+  const lower = bin.lower ?? -Infinity, upper = bin.upper ?? Infinity
+  const atLower = cdf(curve, lower), atUpper = cdf(curve, upper)
+  const inside = atUpper - atLower > 1e-12 ? (atUpper - cdf(curve, outcome)) / (atUpper - atLower)
+    : Number.isFinite(lower) && Number.isFinite(upper) ? (upper - outcome) / (upper - lower) : 0.5
+  return (shareAtOrAbove(ranges, counts, upper) + counts[ranges.indexOf(bin)] * inside) / total
 }

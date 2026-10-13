@@ -2,19 +2,16 @@
 
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { positionDensities } from '@/domain/allocation'
-import { cdf, densityBuckets, mixtureBuckets, mixtureCdf, type Coefficients } from '@/domain/distribution'
-import type { CrowdCurve } from '@/lib/crowd'
-import { binForOutcome, formatPercentage, rangeEdges, shareAtOrAbove, type RangeBin } from '@/domain/ranges'
+import { densityBuckets, type Coefficients } from '@/domain/distribution'
+import { binForOutcome, curveFromPositions, formatPercentage, rangeEdges, shareAtOrAbove, smoothShareAtOrAbove, type RangeBin } from '@/domain/ranges'
 
 const LEFT = 8, RIGHT = 8, TOP = 24, BOTTOM = 51, TAIL_GAP = 10, TAIL_SHARE = .5
 
-export function PositionChart({ ranges, quantities, coefficients, crowd, crowdCurve, payout, live, mine = true, onChange, onPick, readOnly = false, reference = false, submitted = false }: {
+export function PositionChart({ ranges, quantities, coefficients, crowd, payout, live, mine = true, onChange, onPick, readOnly = false, reference = false, submitted = false }: {
   ranges: RangeBin[]
   quantities: number[]
   /** Circulating positions per range, drawn as dotted bars behind your order in the same density units. */
   crowd?: number[]
-  /** The crowd's entry curves, averaged into one line and used to answer at any value. */
-  crowdCurve?: CrowdCurve | null
   /** Ratified payout share per range, drawn as thin blue bars. */
   payout?: number[] | null
   /** Book-implied odds per range, shown after the crowd's opening share. */
@@ -62,10 +59,12 @@ export function PositionChart({ ranges, quantities, coefficients, crowd, crowdCu
       return Number.isFinite(result.peak) ? result : null
     } catch { return null }
   }, [coefficients, low, high])
+  // The crowd curve is fit to positions alone: only paying for positions can move it.
+  const crowdFit = useMemo(() => crowd?.some(count => count > 0) ? curveFromPositions(ranges, crowd) : null, [ranges, crowd])
   const crowdLine = useMemo(() => {
-    try { return crowdCurve?.components.length ? mixtureBuckets(crowdCurve.components, 300, { low, high }) : null }
+    try { return crowdFit ? densityBuckets(crowdFit, 300, { low, high }) : null }
     catch { return null }
-  }, [crowdCurve, low, high])
+  }, [crowdFit, low, high])
   const crowdAll = useMemo(() => {
     try { return crowd?.some(supply => supply > 0) ? positionDensities(ranges, crowd) : [] }
     catch { return [] }
@@ -81,9 +80,17 @@ export function PositionChart({ ranges, quantities, coefficients, crowd, crowdCu
   const tails = mineShown.filter(position => position.density === null).map(position => ({ position, side: sideOf(position.range), density: columnDensity(position.range, position.share) }))
   const overflow = ranges.filter(range => range.lower === null || range.upper === null)
   const hasLow = overflow.some(range => sideOf(range) === 'low'), hasHigh = overflow.some(range => sideOf(range) === 'high')
+  // The resulting curve: the same fit through the positions after your order mints alongside the crowd's.
+  const combined = useMemo(() => crowd && mine && positions?.some(position => position.quantity > 0)
+    ? crowd.map((count, index) => count + (positions[index]?.quantity ?? 0)) : null, [crowd, mine, positions])
+  const resultFit = useMemo(() => combined ? curveFromPositions(ranges, combined) : null, [ranges, combined])
+  const resultLine = useMemo(() => {
+    try { return crowdLine && resultFit ? densityBuckets(resultFit, 300, { low, high }) : null }
+    catch { return null }
+  }, [crowdLine, resultFit, low, high])
   const peak = Math.max(mine ? density?.peak ?? 0 : 0, ...mineShown.map(position => columnDensity(position.range, position.share)),
     ...crowdAll.map(position => columnDensity(position.range, position.share)),
-    ...(payout ?? []).map((share, index) => columnDensity(ranges[index], share)), crowdLine?.peak ?? 0) || 1
+    ...(payout ?? []).map((share, index) => columnDensity(ranges[index], share)), crowdLine?.peak ?? 0, resultLine?.peak ?? 0) || 1
   // Each overflow column is half as wide as a finite range: solve tail = share * plotWidth / n with the tails taken out of the plot.
   const sides = Number(hasLow) + Number(hasHigh)
   const TAIL = TAIL_SHARE * (width - LEFT - RIGHT - sides * TAIL_GAP) / (Math.max(1, finiteRanges.length) + TAIL_SHARE * sides)
@@ -147,23 +154,13 @@ export function PositionChart({ ranges, quantities, coefficients, crowd, crowdCu
   // The crowd answers, then your order or the book moves the answer; without a crowd your order answers alone.
   const crowdShares = crowdAll.length ? crowdAll.map(position => position.share) : null
   // The crowd's curve after your order joins it: crowd and your curve blended by positions, on the crowd curve's grid.
-  const resultLine = useMemo(() => {
-    if (!crowdLine || !crowdCurve || !mine || yourTotal <= 0) return null
-    try {
-      const yours = densityBuckets(coefficients, crowdLine.buckets.length, { low, high }).buckets
-      const total = crowdCurve.covered + yourTotal
-      return crowdLine.buckets.map((bucket, index) => ({ ...bucket,
-        density: (crowdCurve.covered * bucket.density + yourTotal * yours[index].density) / total }))
-    } catch { return null }
-  }, [crowdLine, crowdCurve, mine, yourTotal, coefficients, low, high])
-  const smoothAbove = (extra: number) => {
-    if (!crowdCurve || edge === null) return null
-    const crowdAbove = 1 - mixtureCdf(crowdCurve.components, edge)
-    const above = extra > 0 ? (crowdCurve.covered * crowdAbove + extra * (1 - cdf(coefficients, edge))) / (crowdCurve.covered + extra) : crowdAbove
+  const smoothAbove = (counts: readonly number[] | null | undefined, fit: Coefficients | null) => {
+    if (!counts || !fit || edge === null) return null
+    const above = smoothShareAtOrAbove(ranges, counts, fit, edge)
     return below ? 1 - above : above
   }
-  const answer = smooth ? smoothAbove(0) : asked(crowdShares ?? mineShown.map(position => position.share))
-  const moved = crowdShares && yourTotal > 0 ? { value: smooth ? smoothAbove(yourTotal) : asked(crowdAll.map((position, index) => position.quantity + (mineShown[index]?.quantity ?? 0))), by: 'with your order' }
+  const answer = smooth ? smoothAbove(crowd, crowdFit) : asked(crowdShares ?? mineShown.map(position => position.share))
+  const moved = crowdShares && yourTotal > 0 ? { value: smooth ? smoothAbove(combined, resultFit) : asked(crowdAll.map((position, index) => position.quantity + (mineShown[index]?.quantity ?? 0))), by: 'with your order' }
     : crowdShares && bookOdds ? { value: asked(bookOdds), by: 'on the book' } : null
   const crowdShare = (tierId: number) => crowdAll.find(position => position.range.tierId === tierId)?.share
   return <>
@@ -249,7 +246,7 @@ export function PositionChart({ ranges, quantities, coefficients, crowd, crowdCu
       {crowdLine && <path className="chart-crowd-curve" pointerEvents="none"
         d={crowdLine.buckets.map((bucket, index) => `${index ? 'L' : 'M'}${x(bucket.lower)},${y(bucket.density)} L${x(bucket.upper)},${y(bucket.density)}`).join(' ')} />}
       {resultLine && <path className="chart-result-curve" pointerEvents="none"
-        d={resultLine.map((bucket, index) => `${index ? 'L' : 'M'}${x(bucket.lower)},${y(bucket.density)} L${x(bucket.upper)},${y(bucket.density)}`).join(' ')} />}
+        d={resultLine.buckets.map((bucket, index) => `${index ? 'L' : 'M'}${x(bucket.lower)},${y(bucket.density)} L${x(bucket.upper)},${y(bucket.density)}`).join(' ')} />}
       {mine && <path d={line} className="chart-curve" pointerEvents="none" />}
       <line x1={LEFT} x2={width - RIGHT} y1={axis} y2={axis} className="chart-axis" />
       {ticks.filter(tick => edge === null || answer === null || tick === edge || Math.abs(x(tick) - x(edge)) > 44).map(tick => <text key={tick}
@@ -276,8 +273,8 @@ export function PositionChart({ ranges, quantities, coefficients, crowd, crowdCu
       {crowdAll.length > 0 && (mine || payout) && <span className="distribution-crowd">Crowd</span>}
       {payout && <span className="distribution-payout">Ratified payout</span>}
       {mine && <span className="distribution-line">{reference ? 'Reference curve' : 'Your curve'}</span>}
-      {crowdLine && crowdCurve && <span className="distribution-crowd-curve">Crowd curve, {crowdCurve.complete ? `${crowdCurve.covered} of ${crowdCurve.minted}` : `first ${crowdCurve.covered}`} positions</span>}
-      {resultLine && <span className="distribution-result-curve">Crowd with you</span>}
+      {crowdLine && <span className="distribution-crowd-curve">Crowd curve</span>}
+      {resultLine && <span className="distribution-result-curve">Resulting curve</span>}
     </div>
     <div className="distribution-selection" role="status" aria-label="Selected range">
       {selected ? describe(selected) : 'Position quantities cannot be displayed.'}

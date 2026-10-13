@@ -139,24 +139,38 @@ export function densityBuckets(coefficients: Coefficients, count = 240, bounds?:
   return { low, high, buckets, visibleMass: previousCdf - lowerCdf, peak: Math.max(...buckets.map(bucket => bucket.density)) }
 }
 
-/** One curve in a crowd, weighted by the positions it bought. */
-export type MixtureComponent = { coefficients: Coefficients; weight: number }
-
-/** The crowd's chance of an outcome at or below a value: the weighted average of each curve's CDF. */
-export function mixtureCdf(components: readonly MixtureComponent[], outcome: number): number {
-  const total = components.reduce((sum, item) => sum + item.weight, 0)
-  if (!(total > 0)) throw new Error('A crowd curve needs positive weight.')
-  return components.reduce((sum, item) => sum + item.weight * cdf(item.coefficients, outcome), 0) / total
+/** Least-squares metalog through (probability, value) points: 4 terms down to 2, the first that stays a valid curve. */
+export function fitMetalog(points: readonly { p: number; value: number }[]): Coefficients | null {
+  const usable = points.filter(point => point.p > 0 && point.p < 1 && Number.isFinite(point.value))
+  for (let terms = Math.min(4, usable.length); terms >= 2; terms--) {
+    const rows = usable.map(({ p }) => {
+      const z = p - 0.5, logit = Math.log(p) - Math.log1p(-p)
+      return [1, logit, z * logit, z, z * z, z * z * logit].slice(0, terms)
+    })
+    const solved = leastSquares(rows, usable.map(point => point.value))
+    if (!solved) continue
+    try { return validateCoefficients(solved) } catch { /* try fewer terms */ }
+  }
+  return null
 }
 
-/** The crowd curve on a fixed grid: weighted average of each curve's interval densities. */
-export function mixtureBuckets(components: readonly MixtureComponent[], count: number, bounds: { low: number; high: number }) {
-  const total = components.reduce((sum, item) => sum + item.weight, 0)
-  if (!(total > 0)) throw new Error('A crowd curve needs positive weight.')
-  const parts = components.map(item => ({ weight: item.weight / total, buckets: densityBuckets(item.coefficients, count, bounds).buckets }))
-  const buckets = parts[0].buckets.map((bucket, index) => {
-    const mass = parts.reduce((sum, part) => sum + part.weight * part.buckets[index].mass, 0)
-    return { lower: bucket.lower, upper: bucket.upper, mass, density: mass / (bucket.upper - bucket.lower) }
-  })
-  return { buckets, peak: Math.max(...buckets.map(bucket => bucket.density)) }
+function leastSquares(rows: number[][], targets: number[]): number[] | null {
+  const n = rows[0].length
+  // Normal equations, solved by Gauss-Jordan with partial pivoting; n is at most 4.
+  const m = Array.from({ length: n }, (_, i) => [
+    ...Array.from({ length: n }, (_, j) => rows.reduce((sum, row) => sum + row[i] * row[j], 0)),
+    rows.reduce((sum, row, k) => sum + row[i] * targets[k], 0),
+  ])
+  for (let c = 0; c < n; c++) {
+    let pivot = c
+    for (let r = c + 1; r < n; r++) if (Math.abs(m[r][c]) > Math.abs(m[pivot][c])) pivot = r
+    if (Math.abs(m[pivot][c]) < 1e-12) return null
+    ;[m[c], m[pivot]] = [m[pivot], m[c]]
+    for (let r = 0; r < n; r++) {
+      if (r === c) continue
+      const factor = m[r][c] / m[c][c]
+      for (let k = c; k <= n; k++) m[r][k] -= factor * m[c][k]
+    }
+  }
+  return m.map((row, i) => row[n] / row[i])
 }
