@@ -14,8 +14,10 @@ import { PositionChart } from './PositionChart'
 const COEFFICIENT_LABELS = ['Median', 'Base spread', 'Tail asymmetry', 'Middle spread', 'Shape asymmetry', 'Tail spread']
 type EditorMode = 'moments' | 'coefficients' | 'ranges'
 
-export function ForecastEditor({ definition, market, current = true, onSubmitted }: {
+export function ForecastEditor({ definition, market, current = true, onSubmitted, crowd }: {
   definition: MarketDefinition
+  /** Live circulating supply per range, drawn behind your curve. */
+  crowd?: number[]
   market?: MarketSnapshot
   current?: boolean
   onSubmitted?: () => void
@@ -121,80 +123,84 @@ export function ForecastEditor({ definition, market, current = true, onSubmitted
     finally { setSubmitting(false) }
   }
   const closed = market && market.stage !== 'entry'
-  return <section aria-labelledby="your-view">
-    <h2 id="your-view">Your view</h2>
-    <div className="forecast-controls">
-      <div className="mode-toggle" role="group" aria-label="Curve controls">
-        <button type="button" aria-pressed={mode === 'moments'} onClick={() => selectMode('moments')}>Simple</button>
-        <button type="button" aria-pressed={mode === 'coefficients'} onClick={() => selectMode('coefficients')}>Expressive</button>
-        <button type="button" aria-pressed={manual} onClick={() => selectMode('ranges')}>By range</button>
-      </div>
+  return <section aria-labelledby="your-view" className="forecast">
+    <div className="forecast-canvas">
+      <PositionChart ranges={ranges} quantities={(manual && manualCounts) || tablePreview?.allocation.quantities || []}
+        coefficients={displayedCurve} crowd={crowd} reference={manual} onChange={manual ? undefined : changeCurve}
+        readOnly={!model.preview && (!manual || !manualCounts)} />
+      {tablePreview && <details className="positions"><summary><h3>Positions ({tablePreview.allocation.count}){!model.preview && <small> | Last valid preview</small>}</h3></summary>
+        <div className="positions-columns" role="region" aria-label="Positions">
+          {[0, positionColumnSize].map((offset, column) => <table key={column} aria-label={`Positions, ${column === 0 ? 'first' : 'second'} half`}>
+            <thead><tr><th>Range</th><th>{manual ? 'Reference curve' : 'Your curve'}</th><th>NFTs</th><th>Your positions</th></tr></thead><tbody>
+              {tablePreview.ranges.slice(offset, offset + positionColumnSize).map((range, row) => {
+                const index = offset + row
+                return <tr key={range.tierId}>
+                  <td>{range.label}</td><td>{(tablePreview.allocation.probabilities[index] * 100).toFixed(2)}%</td>
+                  <td>{tablePreview.allocation.quantities[index]}</td><td>{model.preview ? `${(model.preview.allocation.actualProbabilities[index] * 100).toFixed(2)}%` : '—'}</td>
+                </tr>
+              })}
+            </tbody>
+          </table>)}
+        </div>
+      </details>}
     </div>
-    {mode === 'moments' ? <div className="forecast-moments">
-      <label className="field"><span>Mean (%)</span><input aria-label="Mean (%)" inputMode="decimal" value={mean} onChange={event => setMean(event.target.value)} /></label>
-      <label className="field"><span>Standard deviation (%)</span><input aria-label="Standard deviation (%)" inputMode="decimal" value={sigma} onChange={event => setSigma(event.target.value)} /></label>
-    </div> : mode === 'coefficients' ? <>
-      <div className="coefficient-fields">{COEFFICIENT_LABELS.map((label, index) => <label className="field" key={label}>
-        <span>a<sub>{index + 1}</sub> | {label}</span>
-        <input aria-label={`a${index + 1} | ${label}`} inputMode="decimal" spellCheck={false}
-          aria-invalid={curve.error !== null} aria-describedby={curve.error ? 'forecast-error' : undefined}
-          value={coefficientFields[index]}
-          onChange={event => {
-            const updated = [...coefficientFields]
-            updated[index] = event.target.value
-            setCoefficientFields(updated)
-          }} />
-      </label>)}</div>
-      <p className="hint">Values in percentage points. Shape terms work together.</p>
-    </> : <div className="table-wrap positions-table range-editor" role="region" aria-label="NFT counts" tabIndex={0}>
-      <table><thead><tr><th>Range</th><th>NFTs</th></tr></thead><tbody>
-        {ranges.map((range, index) => <tr key={range.tierId}><td>{range.label}</td><td>
-          <input className="quantity-input" aria-label={`NFTs for ${range.label}`} inputMode="numeric"
-            aria-invalid={model.error !== null} aria-describedby={model.error ? 'forecast-error' : undefined}
-            value={quantities?.[index] ?? ''} onChange={event => {
-              const updated = [...(quantities ?? ranges.map(() => '0'))]
+    <div className="ticket">
+      <h2 id="your-view">Your view</h2>
+      <div className="forecast-controls">
+        <div className="mode-toggle" role="group" aria-label="Curve controls">
+          <button type="button" aria-pressed={mode === 'moments'} onClick={() => selectMode('moments')}>Simple</button>
+          <button type="button" aria-pressed={mode === 'coefficients'} onClick={() => selectMode('coefficients')}>Expressive</button>
+          <button type="button" aria-pressed={manual} onClick={() => selectMode('ranges')}>By range</button>
+        </div>
+      </div>
+      {mode === 'moments' ? <div className="forecast-moments">
+        <label className="field"><span>Mean (%)</span><input aria-label="Mean (%)" inputMode="decimal" value={mean} onChange={event => setMean(event.target.value)} /></label>
+        <label className="field"><span>Standard deviation (%)</span><input aria-label="Standard deviation (%)" inputMode="decimal" value={sigma} onChange={event => setSigma(event.target.value)} /></label>
+      </div> : mode === 'coefficients' ? <>
+        <div className="coefficient-fields">{COEFFICIENT_LABELS.map((label, index) => <label className="field" key={label}>
+          <span>a<sub>{index + 1}</sub> | {label}</span>
+          <input aria-label={`a${index + 1} | ${label}`} inputMode="decimal" spellCheck={false}
+            aria-invalid={curve.error !== null} aria-describedby={curve.error ? 'forecast-error' : undefined}
+            value={coefficientFields[index]}
+            onChange={event => {
+              const updated = [...coefficientFields]
               updated[index] = event.target.value
-              setQuantities(updated)
+              setCoefficientFields(updated)
             }} />
-        </td></tr>)}
-      </tbody></table>
-    </div>}
-    <PositionChart ranges={ranges} quantities={(manual && manualCounts) || tablePreview?.allocation.quantities || []}
-      coefficients={displayedCurve} reference={manual} onChange={manual ? undefined : changeCurve}
-      readOnly={!model.preview && (!manual || !manualCounts)} />
-    <div className="grid">
-      <label className="field"><span>Stake (ETH)</span><input className="stake-input" inputMode="decimal" readOnly={manual} value={manual ? (model.payment ? formatEther(model.payment.valueWei) : '') : budget} onChange={event => setBudgets(previous => ({ ...previous, [mode]: event.target.value }))} /><small>{formatEther(BigInt(definition.unitPriceWei))} ETH per position</small></label>
-      {displayedModel?.preview && displayedModel.payment && <div className="field" style={{ alignContent: 'center' }}>
-        <span>{displayedModel.preview.allocation.count} positions for {formatEther(displayedModel.payment.valueWei)} ETH</span>
-        <small>{!model.preview ? 'Last valid preview' : `${manual ? 'Difference from reference curve' : 'Rounding difference'}: ${(displayedModel.preview.allocation.totalVariationError * 100).toFixed(2)}%`}</small>
-        {displayedModel.payment.remainderWei > 0n && <small>{formatEther(displayedModel.payment.remainderWei)} ETH stays in your wallet.</small>}
+        </label>)}</div>
+        <p className="hint">Values in percentage points. Shape terms work together.</p>
+      </> : <div className="table-wrap positions-table range-editor" role="region" aria-label="NFT counts" tabIndex={0}>
+        <table><thead><tr><th>Range</th><th>NFTs</th></tr></thead><tbody>
+          {ranges.map((range, index) => <tr key={range.tierId}><td>{range.label}</td><td>
+            <input className="quantity-input" aria-label={`NFTs for ${range.label}`} inputMode="numeric"
+              aria-invalid={model.error !== null} aria-describedby={model.error ? 'forecast-error' : undefined}
+              value={quantities?.[index] ?? ''} onChange={event => {
+                const updated = [...(quantities ?? ranges.map(() => '0'))]
+                updated[index] = event.target.value
+                setQuantities(updated)
+              }} />
+          </td></tr>)}
+        </tbody></table>
       </div>}
-    </div>
-    {model.error && <p id="forecast-error" className="error" role="alert">{model.error}</p>}
-    {tablePreview && <div className="positions"><h3>Positions ({tablePreview.allocation.count}){!model.preview && <small> | Last valid preview</small>}</h3>
-      <div className="positions-columns" role="region" aria-label="Positions">
-        {[0, positionColumnSize].map((offset, column) => <table key={column} aria-label={`Positions, ${column === 0 ? 'first' : 'second'} half`}>
-          <thead><tr><th>Range</th><th>{manual ? 'Reference curve' : 'Your curve'}</th><th>NFTs</th><th>Your positions</th></tr></thead><tbody>
-            {tablePreview.ranges.slice(offset, offset + positionColumnSize).map((range, row) => {
-              const index = offset + row
-              return <tr key={range.tierId}>
-                <td>{range.label}</td><td>{(tablePreview.allocation.probabilities[index] * 100).toFixed(2)}%</td>
-                <td>{tablePreview.allocation.quantities[index]}</td><td>{model.preview ? `${(model.preview.allocation.actualProbabilities[index] * 100).toFixed(2)}%` : '—'}</td>
-              </tr>
-            })}
-          </tbody>
-        </table>)}
+      <div className="ticket-stake">
+        <label className="field"><span>Stake (ETH)</span><input className="stake-input" inputMode="decimal" readOnly={manual} value={manual ? (model.payment ? formatEther(model.payment.valueWei) : '') : budget} onChange={event => setBudgets(previous => ({ ...previous, [mode]: event.target.value }))} /><small>{formatEther(BigInt(definition.unitPriceWei))} ETH per position</small></label>
+        {displayedModel?.preview && displayedModel.payment && <div className="field">
+          <span>{displayedModel.preview.allocation.count} positions for {formatEther(displayedModel.payment.valueWei)} ETH</span>
+          <small>{!model.preview ? 'Last valid preview' : `${manual ? 'Difference from reference curve' : 'Rounding difference'}: ${(displayedModel.preview.allocation.totalVariationError * 100).toFixed(2)}%`}</small>
+          {displayedModel.payment.remainderWei > 0n && <small>{formatEther(displayedModel.payment.remainderWei)} ETH stays in your wallet.</small>}
+        </div>}
       </div>
-    </div>}
-    <div className="actions">
-      {market && <button className="primary" disabled={!current || !model.preview || Boolean(closed) || submitting || transactions.busy || transactions.hasPendingForMarket(market!)} onClick={submit}>
-        {submitting ? 'Preparing entry…' : !address ? 'Connect to enter' : isSigna ? 'Use external wallet to enter' : 'Review entry'}
-      </button>}
-      <button disabled={!model.preview} onClick={() => model.preview && downloadJson(model.preview, 'metalog-forecast.json')}>Download draft</button>
-      <button disabled={!model.preview} onClick={downloadSIPmath}>Download SIPmath</button>
+      {model.error && <p id="forecast-error" className="error" role="alert">{model.error}</p>}
+      <div className="actions ticket-actions">
+        {market && <button className="primary" disabled={!current || !model.preview || Boolean(closed) || submitting || transactions.busy || transactions.hasPendingForMarket(market!)} onClick={submit}>
+          {submitting ? 'Preparing entry…' : !address ? 'Connect to enter' : isSigna ? 'Use external wallet to enter' : 'Review entry'}
+        </button>}
+        <button className="quiet" disabled={!model.preview} onClick={() => model.preview && downloadJson(model.preview, 'metalog-forecast.json')}>Download draft</button>
+        <button className="quiet" disabled={!model.preview} onClick={downloadSIPmath}>Download SIPmath</button>
+      </div>
+      {current && closed && <p className="hint">{market.stage === 'countdown' ? 'Entry has not opened.' : 'Entry is closed.'}</p>}
+      {!market && <p className="hint">Example only. No positions are minted.</p>}
+      {error && <p className="error" role="alert">{error}</p>}
     </div>
-    {current && closed && <p className="hint" style={{ marginTop: 12 }}>{market.stage === 'countdown' ? 'Entry has not opened.' : 'Entry is closed.'}</p>}
-    {!market && <p className="hint" style={{ marginTop: 12 }}>Example only. No positions are minted.</p>}
-    {error && <p className="error" role="alert">{error}</p>}
   </section>
 }

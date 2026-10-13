@@ -5,11 +5,13 @@ import { positionDensities } from '@/domain/allocation'
 import { densityBuckets, type Coefficients } from '@/domain/distribution'
 import { binForOutcome, formatPercentage, type RangeBin } from '@/domain/ranges'
 
-const HEIGHT = 290, LEFT = 48, RIGHT = 18, TOP = 24, BOTTOM = 51
+const LEFT = 48, RIGHT = 18, TOP = 24, BOTTOM = 51
 
-export function PositionChart({ ranges, quantities, coefficients, onChange, readOnly = false, reference = false, submitted = false }: {
+export function PositionChart({ ranges, quantities, coefficients, crowd, onChange, readOnly = false, reference = false, submitted = false }: {
   ranges: RangeBin[]
   quantities: number[]
+  /** Circulating NFTs per range, drawn as a step line in the same density units as your bars. */
+  crowd?: number[]
   coefficients: Coefficients
   onChange?: (value: Coefficients) => void
   readOnly?: boolean
@@ -19,6 +21,7 @@ export function PositionChart({ ranges, quantities, coefficients, onChange, read
   const element = useRef<SVGSVGElement>(null)
   const descriptionId = useId()
   const [width, setWidth] = useState(860)
+  const HEIGHT = width < 700 ? 290 : 380
   const [selectedTier, setSelectedTier] = useState<number | null>(null)
   useEffect(() => {
     const observer = new ResizeObserver(([entry]) => setWidth(Math.max(300, entry.contentRect.width)))
@@ -41,7 +44,11 @@ export function PositionChart({ ranges, quantities, coefficients, onChange, read
     } catch { return null }
   }, [coefficients, low, high])
   const finite = positions?.filter(position => position.density !== null) ?? []
-  const peak = Math.max(density?.peak ?? 0, ...finite.map(position => position.density!)) || 1
+  const crowdFinite = useMemo(() => {
+    try { return crowd?.some(supply => supply > 0) ? positionDensities(ranges, crowd).filter(position => position.density !== null) : [] }
+    catch { return [] }
+  }, [ranges, crowd])
+  const peak = Math.max(density?.peak ?? 0, ...finite.map(position => position.density!), ...crowdFinite.map(position => position.density!)) || 1
   const plotWidth = width - LEFT - RIGHT, plotHeight = HEIGHT - TOP - BOTTOM
   const axis = HEIGHT - BOTTOM
   const x = (value: number) => LEFT + (value - low) / span * plotWidth
@@ -100,15 +107,17 @@ export function PositionChart({ ranges, quantities, coefficients, onChange, read
         const { range } = position
         const height = position.density! / peak * plotHeight
         return <rect key={range.tierId} x={x(range.lower!)} y={axis - height}
-          width={x(range.upper!) - x(range.lower!)} height={height} fill="#384fc4"
-          fillOpacity={selected?.range.tierId === range.tierId ? '.4' : '.2'} stroke="white" strokeWidth="1"
+          width={x(range.upper!) - x(range.lower!)} height={height} className="chart-bar"
+          data-selected={selected?.range.tierId === range.tierId}
           tabIndex={0} aria-label={describe(position)} onFocus={() => setSelectedTier(range.tierId)}>
           <title>{describe(position)}</title>
         </rect>
       })}
-      <path d={line} stroke="#384fc4" strokeWidth="2.4" fill="none" pointerEvents="none" />
-      <line x1={LEFT} x2={width - RIGHT} y1={axis} y2={axis} stroke="#bbb" />
-      <line x1={LEFT} x2={LEFT} y1={TOP} y2={axis} stroke="#bbb" />
+      {crowdFinite.length > 0 && <polyline className="chart-crowd" pointerEvents="none"
+        points={crowdFinite.map(position => `${x(position.range.lower!)},${y(position.density!)} ${x(position.range.upper!)},${y(position.density!)}`).join(' ')} />}
+      <path d={line} className="chart-curve" pointerEvents="none" />
+      <line x1={LEFT} x2={width - RIGHT} y1={axis} y2={axis} className="chart-axis" />
+      <line x1={LEFT} x2={LEFT} y1={TOP} y2={axis} className="chart-axis" />
       {[0, .5, 1].map(fraction => <text key={fraction} x={LEFT - 8} y={axis - fraction * plotHeight + 4} textAnchor="end">
         {fraction ? (peak * fraction).toPrecision(2) : '0'}
       </text>)}
@@ -121,6 +130,7 @@ export function PositionChart({ ranges, quantities, coefficients, onChange, read
     <div className="distribution-legend">
       <span className="distribution-line">{reference ? 'Reference curve' : 'Curve'}</span>
       <span className="distribution-bars">NFT positions</span>
+      {crowdFinite.length > 0 && <span className="distribution-crowd">Crowd</span>}
       <span>Density per percentage point</span>
     </div>
     <div className="distribution-selection" role="status" aria-label="Selected range">

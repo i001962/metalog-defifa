@@ -49,6 +49,7 @@ test('manual NFT buckets update chart, stake and export and recover from invalid
   await expect(page.getByRole('link', { name: 'Built on Defifa, see engine code' })).toHaveAttribute('href', 'https://github.com/BallKidz/defifa/tree/main/src')
   await expect(page.locator('.facts')).not.toContainText('ratified Defifa')
   await expect(page.getByRole('heading', { name: 'Positions (100)', exact: true })).toBeVisible()
+  await page.locator('.positions > summary').click()
   const positions = page.getByRole('region', { name: 'Positions', exact: true })
   await expect(positions.getByRole('textbox')).toHaveCount(0)
   const firstHalf = positions.getByRole('table', { name: 'Positions, first half', exact: true })
@@ -202,6 +203,7 @@ test('example curve, decimals, raw validation and independent stake errors', asy
     await expect(overflow).toContainText(`${draft.allocation.quantities[index]} NFTs`)
     await expect(overflow).toContainText(`${(draft.allocation.actualProbabilities[index] * 100).toFixed(2)}%`)
   }
+  await page.locator('.positions > summary').click()
   await expect(page.getByRole('table', { name: 'Positions, first half', exact: true })).toBeVisible()
   await expect(page.getByRole('table', { name: 'Positions, second half', exact: true })).toBeVisible()
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
@@ -223,6 +225,7 @@ test('coefficient drafts preserve focused controls and last valid curve without 
   const chart = page.getByRole('img', { name: 'Your probability distribution', exact: true })
   const bars = chart.locator('rect')
   await expect(bars).toHaveCount(19)
+  await page.locator('.positions > summary').click()
   const positions = page.getByRole('region', { name: 'Positions', exact: true })
   const counts = positions.locator('tbody tr td:nth-child(3)')
   await expect(positions.getByRole('textbox')).toHaveCount(0)

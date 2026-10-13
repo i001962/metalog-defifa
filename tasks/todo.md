@@ -1,3 +1,23 @@
+# Market page design pass (stage focus, Seurat palette)
+
+Resources: `/Users/jango/Documents/jb/v6/evm/AGENTS.md`, `tasks/lessons.md`, `workflow/ponytail/SKILL.md`, `docs/PLAN_REFINEMENT.md`; local `AGENTS.md`, `docs/DESIGN.md`. Isolated worktree `../metalog-design` on `design/market-stage-focus` from e552516; dirty `main` checkout untouched.
+
+- **Outcome:** Full-width market page that shows one thing at a time: the panel that matters for the current game stage, with the rest one tab away. Orange tint and palette from Seurat's *Parade de cirque*; data viz over prose.
+- **Owners:** Presentation only (`src/components`, `globals.css`). No domain, chain, calldata or transaction change. Stage comes from `MarketSnapshot.stage`; crowd shares reuse `marketData` and `positionDensities`.
+- **Rules kept:** No auto-switch of the open panel when a refresh changes the stage (drafts stay in view). Panels stay mounted (`hidden`) so drafts and selections survive tab changes. Square corners, input sizes and accessible names stay.
+- **Verification:** `npm run check`, full browser suite desktop + mobile, screenshots per stage.
+- **Recovery:** Branch only; no merge without jango.
+
+- [x] Theme tokens, pointillist paper, full-width layout
+- [x] Stage lamps (stage + schedule + countdown)
+- [x] Stage-focused tabs in MarketView; lifecycle split into panels
+- [x] Crowd chart (stake share, ratified payout overlay), crowd line on your chart
+- [x] Forecast editor as canvas + ticket
+- [x] Tests updated, check + browser suite green, screenshots reviewed
+
+Review: `npm run check` passes; browser suite 56/56 (desktop + mobile) after updating tests for tabs (entries, timing), the collapsed positions table and the new ink color. Timing test now also asserts a stage change does not switch the open panel. One real regression caught and fixed: the positions summary shifted the ticket 0.5px on mobile while editing. Stage screenshots reviewed for entry, observation, results and complete at 1440px and iPhone 13.
+
+
 # Shared Defifa SDK owners
 
 Resources: `/Users/jango/Documents/jb/v6/evm/AGENTS.md`, `/Users/jango/Documents/jb/v6/evm/tasks/lessons.md`, `/Users/jango/Documents/jb/v6/evm/workflow/ponytail/SKILL.md`, `/Users/jango/Documents/jb/v6/evm/workflow/ponytail/README.md`, `/Users/jango/Documents/jb/v6/evm/docs/PLAN_REFINEMENT.md`; local `AGENTS.md`, `README.md`, `docs/DESIGN.md` apply. Isolated `refactor/shared-defifa-sdk` starts at2084a48; dirty parent stays untouched.

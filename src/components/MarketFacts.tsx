@@ -5,9 +5,9 @@ export function utcTime(seconds: number) {
   return new Intl.DateTimeFormat('en', { timeZone: 'UTC', year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }).format(seconds * 1000) + ' UTC'
 }
 
-export function MarketFacts({ definition }: { definition: MarketDefinition }) {
+export function MarketFacts({ definition, open }: { definition: MarketDefinition; open?: boolean }) {
   const ranges = marketRanges(definition)
-  return <details><summary>Market rules</summary><dl className="facts">
+  return <details open={open}><summary>Market rules</summary><dl className="facts">
     <dt>Entry opens</dt><dd>{utcTime(definition.entryOpensAt)}</dd>
     <dt>Entry closes / observation starts</dt><dd>{utcTime(definition.entryClosesAt)}</dd>
     <dt>Observation ends</dt><dd>{utcTime(definition.resolvesAt)}</dd>

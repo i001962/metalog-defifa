@@ -96,7 +96,7 @@ test('unequal range definitions preserve exact intervals and NFT allocations in 
   await page.keyboard.press('Tab')
   await expect(secondBar).toBeFocused()
   await expect(secondBar).toHaveCSS('outline-style', 'none')
-  await expect(secondBar).toHaveCSS('stroke', 'rgb(32, 32, 32)')
+  await expect(secondBar).toHaveCSS('stroke', 'rgb(42, 35, 66)')
   await diagram.getByRole('button', { name: 'Range 2: -4.25% to < -0.75%', exact: true }).focus()
   await expect(diagram.locator('figcaption')).toHaveText('Range 2: -4.25% to < -0.75%')
   await diagram.getByRole('button', { name: 'Range 4: ≥ +3%', exact: true }).click()

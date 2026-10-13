@@ -5,14 +5,16 @@ import { useQuery } from '@tanstack/react-query'
 import { formatEther, formatUnits, getAddress, isAddress } from 'viem'
 import { MAX_POSITIONS } from '@/domain/allocation'
 import { scorecardWeightsFromPercentages } from '@/domain/scorecard'
-import type { LifecycleAction, LifecycleSnapshot } from '@/lib/defifa-lifecycle'
+import type { LifecycleAction, LifecycleSnapshot, TierWeight } from '@/lib/defifa-lifecycle'
 import { chainForId } from '@/lib/wallet'
 import { useWallet } from '@/providers/Providers'
 import { useTransactions } from '@/providers/Transactions'
 import { utcTime } from './MarketFacts'
 
-export function MarketLifecycle({ lifecycle, current, loading, error, onRefresh, onPage, inventoryPaged, scorecardsPaged }: {
+export function MarketLifecycle({ lifecycle, panel, current, loading, error, onRefresh, onPage, inventoryPaged, scorecardsPaged }: {
   lifecycle: LifecycleSnapshot
+  /** Both panels stay mounted so selections and result drafts survive switching. */
+  panel: 'nfts' | 'results' | null
   current: boolean
   loading: boolean
   error?: string
@@ -99,7 +101,7 @@ export function MarketLifecycle({ lifecycle, current, loading, error, onRefresh,
   }
 
   return <>
-    <section aria-labelledby="your-nfts">
+    <section role="tabpanel" id="panel-nfts" aria-labelledby="your-nfts" hidden={panel !== 'nfts'}>
       <div className="row"><h2 id="your-nfts">Your NFTs</h2><button type="button" disabled={loading || busy} onClick={onRefresh}>Refresh</button></div>
       {loading && <p className="hint" role="status">Updating market and wallet positions…</p>}
       {error && <p className="error" role="alert">{error} Showing the last available market data. Refresh to enable actions.</p>}
@@ -164,12 +166,12 @@ export function MarketLifecycle({ lifecycle, current, loading, error, onRefresh,
         </tbody></table></div>}
       </details>
     </section>
-    <section aria-labelledby="scorecards">
+    <section role="tabpanel" id="panel-results" aria-labelledby="scorecards" hidden={panel !== 'results'}>
       <h2 id="scorecards">Results</h2>
       <p className="hint">The ratified result controls payouts. Attestation grace is {duration(lifecycle.attestationGraceSeconds)}; the ratification timelock is {duration(lifecycle.timelockSeconds)}.</p>
       {lifecycle.scorecards.length === 0 && <p>{lifecycle.scorecardsComplete ? 'No results have been proposed.' : 'No results on this page.'}</p>}
       {lifecycle.scorecards.map(card => <details key={card.scorecardId} className="scorecard">
-        <summary>Result <code>{card.scorecardId}</code> | {card.stateName}</summary>
+        <summary><WeightsStrip ranges={market.ranges} weights={card.weights} />Result <code>{card.scorecardId}</code> | {card.stateName}</summary>
         <dl className="facts">
           <dt>Submitted</dt><dd>{utcTime(card.submittedAt)}</dd>
           <dt>Proposed by</dt><dd><code>{card.submitter}</code></dd>
@@ -229,6 +231,15 @@ export function MarketLifecycle({ lifecycle, current, loading, error, onRefresh,
       </details>}
     </section>
   </>
+}
+
+/** A thumbnail of a proposal: one column per range, height by proposed payout. */
+function WeightsStrip({ ranges, weights }: { ranges: { tierId: number }[]; weights: TierWeight[] }) {
+  const total = weights.reduce((sum, item) => sum + Number(item.weight), 0) || 1
+  return <span className="weights-strip" aria-hidden="true">{ranges.map(range => {
+    const share = Number(weights.find(item => item.tierId === range.tierId)?.weight ?? 0) / total
+    return <i key={range.tierId} style={{ height: `${Math.max(share * 100, 4)}%`, opacity: share ? 1 : .25 }} />
+  })}</span>
 }
 
 function duration(seconds: number) {
