@@ -6,11 +6,11 @@ import type { MarketSnapshot } from '@/lib/defifa'
 const FLAME = 'M20 2C23 9 27 12 30 15C33 10 36 8 38 7C37 15 33 23 20 25C7 23 3 15 2 7C4 8 7 10 10 15C13 12 17 9 20 2Z'
 const STEP: Record<MarketSnapshot['stage'], number> = { countdown: 0, entry: 1, refund: 1, trading: 2, settlement: 3, complete: 4, 'no-contest': 4 }
 
-function shortTime(seconds: number) {
+export function shortTime(seconds: number) {
   return new Intl.DateTimeFormat('en', { timeZone: 'UTC', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }).format(seconds * 1000) + ' UTC'
 }
 
-function remaining(seconds: number) {
+export function remaining(seconds: number) {
   if (seconds <= 0) return 'any moment'
   const d = Math.floor(seconds / 86_400), h = Math.floor(seconds % 86_400 / 3_600), m = Math.floor(seconds % 3_600 / 60)
   return d ? `${d}d ${h}h` : h ? `${h}h ${m}m` : m ? `${m}m ${Math.floor(seconds % 60)}s` : `${Math.floor(seconds)}s`

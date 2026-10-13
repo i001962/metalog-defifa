@@ -291,3 +291,20 @@ section.forecast[aria-labelledby="your-view"] { margin-top: 0; }
 .weights-strip { display: inline-flex; align-items: flex-end; gap: 1px; height: 26px; width: 126px; margin-right: 10px; vertical-align: -3px; border-bottom: 1px solid var(--ink); }
 .weights-strip i { flex: 1; background: var(--blue); }
 .scorecard { background: var(--surface); border: 1px solid var(--line); padding: 12px 14px; margin-top: 10px; }
+
+.schedule-meter { margin: 6px 0 34px; max-width: 900px; padding-top: 30px; }
+.schedule-track { position: relative; display: flex; height: 26px; background: var(--sunk); border: 1px solid var(--line); }
+.schedule-segment { position: relative; z-index: 1; display: flex; align-items: center; padding-inline: 8px; font-size: 12px; font-weight: 600; color: var(--ink); white-space: nowrap; overflow: hidden; }
+.schedule-segment + .schedule-segment { border-left: 2px solid var(--ink); }
+.schedule-fill { position: absolute; inset-block: 0; left: 0; background: radial-gradient(circle, #ffffff40 1.2px, transparent 1.6px) 0 0 / 6px 6px, linear-gradient(90deg, var(--gold), var(--accent)); }
+.schedule-now { position: absolute; bottom: calc(100% + 6px); transform: translateX(-50%); font: italic 600 14px/1.2 var(--serif); color: var(--cta); white-space: nowrap; }
+.schedule-now[data-edge="end"] { transform: translateX(-100%); }
+.schedule-now[data-edge="start"] { transform: none; }
+.schedule-now::after { content: ''; position: absolute; left: 50%; top: calc(100% + 2px); height: 32px; border-left: 2px solid var(--cta); }
+.schedule-now[data-edge="end"]::after { left: 100%; }
+.schedule-now[data-edge="start"]::after { left: 0; }
+.schedule-dates { position: relative; height: 18px; margin-top: 5px; font-size: 11px; color: var(--muted); }
+.schedule-dates span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
+.schedule-dates span:first-child { transform: none; }
+.schedule-dates span:last-child { transform: translateX(-100%); }
+@media (max-width: 620px) { .schedule-dates span:nth-child(2) { display: none; } }
