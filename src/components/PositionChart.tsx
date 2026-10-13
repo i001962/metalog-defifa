@@ -207,7 +207,7 @@ export function PositionChart({ ranges, quantities, coefficients, crowd, payout,
     <div className="distribution-legend">
       {mine && <span className="distribution-line">{reference ? 'Reference curve' : 'Curve'}</span>}
       {mine && <span className={crowdAll.length ? 'distribution-bars distribution-order' : 'distribution-bars'}>{crowdAll.length ? 'Your order' : 'NFT positions'}</span>}
-      {crowdAll.length > 0 && <span className="distribution-crowd">Crowd</span>}
+      {crowdAll.length > 0 && (mine || payout) && <span className="distribution-crowd">Crowd</span>}
       {payout && <span className="distribution-payout">Ratified payout</span>}
     </div>
     <div className="distribution-selection" role="status" aria-label="Selected range">

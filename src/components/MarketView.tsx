@@ -114,22 +114,12 @@ export function MarketView({ chainId, projectId }: { chainId: number; projectId:
         below={<>
           {lifecycle.cashOutMode && <div className="actions"><button type="button" className="primary" onClick={() => setTab('nfts')}>
             {lifecycle.cashOutMode === 'cash-out' ? 'Claim payout' : 'Refund'} with your NFTs</button></div>}
-          <div className="market-below">
-          <section aria-labelledby="crowd-heading" className="crowd-table">
-            <div className="row"><h3 id="crowd-heading">Crowd</h3><div className="inline">
-              <a href={`/api/markets/${chainId}/${projectId}`}>JSON</a>
-              <a href={`/api/markets/${chainId}/${projectId}?format=sipmath`}>SIPmath</a>
-              <a href={`${chainForId(chainId).blockExplorers.default.url}/address/${market.hook}`} target="_blank" rel="noreferrer">Contract</a>
-            </div></div>
-            <div className="table-wrap"><table><thead><tr><th>Range</th><th>Positions</th><th>Share</th>{data.ratifiedPayoutShares && <th>Payout</th>}{owned && <th>Yours</th>}</tr></thead><tbody>
-              {market.ranges.map((range, index) => <tr key={range.tierId}><td>{range.label}</td><td>{market.tiers[index].supply}</td>
-                <td>{distribution.probabilities ? `${(distribution.probabilities[index] * 100).toFixed(2)}%` : '—'}</td>
-                {data.ratifiedPayoutShares && <td>{(data.ratifiedPayoutShares[index] * 100).toFixed(2)}%</td>}
-                {owned && <td>{mine[range.tierId] ?? 0}</td>}</tr>)}
-            </tbody></table></div>
-          </section>
+          {/* The chart carries each range's share; the data stays one click away. */}
+          <p className="data-links">Data <span className="pip" aria-hidden="true">|</span>
+            <a href={`/api/markets/${chainId}/${projectId}`}>JSON</a><span className="pip" aria-hidden="true">|</span>
+            <a href={`/api/markets/${chainId}/${projectId}?format=sipmath`}>SIPmath</a><span className="pip" aria-hidden="true">|</span>
+            <a href={`${chainForId(chainId).blockExplorers.default.url}/address/${market.hook}`} target="_blank" rel="noreferrer">Contract</a></p>
           <Activity market={market} active={shown === 'market'} />
-          </div>
         </>} />
     </div>
     <MarketLifecycle key={`play:${chainId}:${projectId}`} lifecycle={lifecycle} current={current}
