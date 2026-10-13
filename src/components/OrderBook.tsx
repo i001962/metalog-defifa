@@ -2,16 +2,19 @@
 
 import { Fragment, useState } from 'react'
 import { formatEther } from 'viem'
-import { impliedChance, type RangeBook } from '@/domain/book'
+import { impliedChance, payoutPerPosition, type RangeBook } from '@/domain/book'
 import type { MarketSnapshot } from '@/lib/defifa'
+import type { ScorecardSnapshot } from '@/lib/defifa-lifecycle'
 import { shortTime } from './StageLamps'
 import { useEthUsd, usdText } from '@/lib/eth-usd'
 
 const NO_VENUE = 'No trading venue is connected yet.'
 
 /** Bids and asks per range while the game plays out; the book closes when observation ends. */
-export function OrderBook({ market, books, sample, owned }: {
+export function OrderBook({ market, books, sample, owned, scorecards }: {
   market: MarketSnapshot
+  /** Proposed results; the leading one prices each range until a result is ratified. */
+  scorecards: ScorecardSnapshot[]
   books: RangeBook[] | null
   sample: boolean
   /** Positions this wallet holds per tier. */
@@ -24,25 +27,34 @@ export function OrderBook({ market, books, sample, owned }: {
     ? `${Number(formatEther(wei)).toLocaleString('en-US', { maximumSignificantDigits: 3 })} ETH` : usdText(Number(formatEther(wei)) * ethUsd)
   const closed = market.stage !== 'trading'
   const pot = BigInt(market.potWei)
+  // What a position pays: the ratified result, else the most-attested live proposal, else the range taking the whole pot.
+  const leading = scorecards.filter(card => card.stateName !== 'Defeated')
+    .reduce<ScorecardSnapshot | null>((best, card) => !best || BigInt(card.attestationCount) > BigInt(best.attestationCount) ? card : best, null)
+  const weights = market.ratifiedWeights ?? leading?.weights ?? null
+  const basis = market.ratifiedWeights ? 'under the ratified result' : leading ? `under proposal ${leading.scorecardId}, the most attested` : 'if this range wins the whole pot'
   return <section aria-labelledby="book-heading" className="order-book">
     <div className="row"><h3 id="book-heading">Order book</h3>
       <span className="hint">{closed ? 'Closed at observation end' : `Closes at observation end, ${shortTime(market.definition.resolvesAt)}`}
         {sample && <><span className="pip" aria-hidden="true">|</span>Sample book, development only</>}</span></div>
-    <p className="hint">Buy at the best ask or sell at the best bid. Odds assume the range takes the whole pot.</p>
-    <div className="table-wrap"><table className="book-table"><thead><tr><th>Range</th><th>Odds</th><th>Bid</th><th>Ask</th><th><span className="sr-only">Trade</span></th></tr></thead><tbody>
+    <p className="hint">Pays is what one position collects {basis}.</p>
+    <div className="table-wrap"><table className="book-table"><thead><tr><th>Range</th><th>Pays</th><th>Odds</th><th>Bid</th><th>Ask</th><th><span className="sr-only">Trade</span></th></tr></thead><tbody>
       {market.ranges.map((range, index) => {
         const book = books?.find(item => item.tierId === range.tierId)
         const bid = book?.bids[0], ask = book?.asks[0]
-        const chance = impliedChance(book, Number(market.tiers[index].supply), pot)
+        const supply = Number(market.tiers[index].supply)
+        const chance = impliedChance(book, supply, pot)
+        const weight = weights ? BigInt(weights.find(item => item.tierId === range.tierId)?.weight ?? '0') : undefined
+        const pays = payoutPerPosition(pot, supply, weight)
         const expanded = open === range.tierId
         return <Fragment key={range.tierId}><tr>
           <td><button type="button" className="book-range" aria-expanded={expanded} onClick={() => setOpen(expanded ? null : range.tierId)}>{range.label}</button></td>
+          <td className="book-pays">{pays === null ? '—' : price(pays)}</td>
           <td className="book-odds">{chance === null ? '—' : `${Math.round(chance * 100)}%`}</td>
           <td className="book-bid">{bid ? price(bid.priceWei) : '—'}</td>
           <td className="book-ask">{ask ? price(ask.priceWei) : '—'}</td>
           <td className="book-trade"><button type="button" disabled title={NO_VENUE}>Buy</button><button type="button" disabled title={NO_VENUE}>Sell</button></td>
         </tr>
-        {expanded && <tr className="book-depth"><td colSpan={5}>
+        {expanded && <tr className="book-depth"><td colSpan={6}>
           <div className="book-sides">
             <div><h4>Bids</h4>{book?.bids.length ? <ol>{book.bids.map((level, i) => <li key={i}><span className="book-bid">{price(level.priceWei)}</span><span>{level.quantity}</span></li>)}</ol> : <p className="hint">No bids</p>}</div>
             <div><h4>Asks</h4>{book?.asks.length ? <ol>{book.asks.map((level, i) => <li key={i}><span className="book-ask">{price(level.priceWei)}</span><span>{level.quantity}</span></li>)}</ol> : <p className="hint">No asks</p>}</div>

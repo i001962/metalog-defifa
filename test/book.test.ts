@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { impliedChance, type RangeBook } from '../src/domain/book'
+import { impliedChance, payoutPerPosition, type RangeBook } from '../src/domain/book'
 
 const book = (bid?: bigint, ask?: bigint): RangeBook => ({ tierId: 1, bids: bid === undefined ? [] : [{ priceWei: bid, quantity: 1 }], asks: ask === undefined ? [] : [{ priceWei: ask, quantity: 1 }] })
 
@@ -17,5 +17,14 @@ describe('impliedChance', () => {
   })
   it('clamps prices above what a range could collect', () => {
     expect(impliedChance(book(10n ** 18n, 10n ** 18n), 10, 10n ** 18n)).toBe(1)
+  })
+})
+
+describe('payoutPerPosition', () => {
+  it('shares the range weight of the pot across its positions', () => {
+    expect(payoutPerPosition(10n ** 18n, 10)).toBe(10n ** 17n)
+    expect(payoutPerPosition(10n ** 18n, 10, 6n * 10n ** 17n)).toBe(6n * 10n ** 16n)
+    expect(payoutPerPosition(10n ** 18n, 0)).toBeNull()
+    expect(payoutPerPosition(0n, 10)).toBeNull()
   })
 })

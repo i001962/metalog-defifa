@@ -125,7 +125,7 @@ export function MarketView({ chainId, projectId }: { chainId: number; projectId:
       <ForecastEditor key={`${chainId}:${projectId}`} definition={market.definition} market={market} current={current} onSubmitted={refresh}
         crowd={supplies} payout={data.ratifiedPayoutShares} live={bookOdds} exports={exports('Market', false)}
         below={<>
-          {inPlay && <OrderBook market={market} books={book?.books ?? null} sample={!!book?.sample} owned={mine} />}
+          {inPlay && <OrderBook market={market} books={book?.books ?? null} sample={!!book?.sample} owned={mine} scorecards={lifecycle.scorecards} />}
           <Activity market={market} active={shown === 'market'} />
         </>} />
     </div>

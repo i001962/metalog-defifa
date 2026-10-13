@@ -397,6 +397,7 @@ section.forecast[aria-labelledby="your-view"] { margin-top: 0; }
 .order-book .row { align-items: baseline; gap: 12px; flex-wrap: wrap; }
 .book-table { max-width: 760px; }
 .book-table td, .book-table th { white-space: nowrap; }
+.book-table .book-pays { font-weight: 650; font-variant-numeric: tabular-nums; }
 .book-table .book-odds { font-weight: 650; color: var(--blue); font-variant-numeric: tabular-nums; }
 .book-table .book-bid { color: var(--green); font-variant-numeric: tabular-nums; }
 .book-table .book-ask { color: var(--rust); font-variant-numeric: tabular-nums; }
