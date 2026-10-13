@@ -171,7 +171,7 @@ export function ForecastEditor({ definition, market, current = true, onSubmitted
         </label>)}</div>
         <p className="hint">Values in percentage points. Shape terms work together.</p>
       </> : <div className="table-wrap positions-table range-editor" role="region" aria-label="NFT counts" tabIndex={0}>
-        <table><thead><tr><th>Range</th><th>NFTs</th></tr></thead><tbody>
+        <table><tbody>
           {ranges.map((range, index) => <tr key={range.tierId}><td>{range.label}</td><td>
             <input className="quantity-input" data-tier={range.tierId} aria-label={`NFTs for ${range.label}`} inputMode="numeric"
               aria-invalid={model.error !== null} aria-describedby={model.error ? 'forecast-error' : undefined}
@@ -184,7 +184,7 @@ export function ForecastEditor({ definition, market, current = true, onSubmitted
         </tbody></table>
       </div>}
       <div className="ticket-stake">
-        <label className="field"><span>Stake (ETH)</span><input className="stake-input" inputMode="decimal" readOnly={manual} value={manual ? (model.payment ? formatEther(model.payment.valueWei) : '') : budget} onChange={event => setBudgets(previous => ({ ...previous, [mode]: event.target.value }))} /><small>{formatEther(BigInt(definition.unitPriceWei))} ETH per position</small></label>
+        <label className="field"><span>Buy (ETH)</span><input className="stake-input" inputMode="decimal" readOnly={manual} value={manual ? (model.payment ? formatEther(model.payment.valueWei) : '') : budget} onChange={event => setBudgets(previous => ({ ...previous, [mode]: event.target.value }))} /><small>{formatEther(BigInt(definition.unitPriceWei))} ETH per position</small></label>
         {displayedModel?.preview && displayedModel.payment && <div className="field">
           <span>{displayedModel.preview.allocation.count} positions for {formatEther(displayedModel.payment.valueWei)} ETH</span>
           <small>{!model.preview ? 'Last valid preview' : `${manual ? 'Difference from reference curve' : 'Rounding difference'}: ${(displayedModel.preview.allocation.totalVariationError * 100).toFixed(2)}%`}</small>

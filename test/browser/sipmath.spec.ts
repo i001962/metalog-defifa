@@ -90,7 +90,7 @@ test('SIPmath downloads preserve all three modes and agree with repeatable previ
     if (mode === 'Simple') {
       await page.getByRole('textbox', { name: 'Mean (%)', exact: true }).fill('-1.23456789012345')
       await page.getByRole('textbox', { name: 'Standard deviation (%)', exact: true }).fill('1.234567890123456')
-      await page.getByRole('textbox', { name: 'Stake (ETH)' }).fill('0.00012')
+      await page.getByRole('textbox', { name: 'Buy (ETH)' }).fill('0.00012')
     } else if (mode === 'Expressive') {
       for (let index = 0; index < expressive.length; index++) {
         await page.getByRole('textbox', { name: new RegExp(`^a${index + 1} \\| `) }).fill(String(expressive[index]))
@@ -165,7 +165,7 @@ test('invalid active drafts disable native and SIPmath downloads through mode ch
   await page.goto('/markets/example')
   const buttons = ['Download draft', 'Download SIPmath'].map(name => page.getByRole('button', { name, exact: true }))
   const mean = page.getByRole('textbox', { name: 'Mean (%)', exact: true })
-  const stake = page.getByRole('textbox', { name: 'Stake (ETH)' })
+  const stake = page.getByRole('textbox', { name: 'Buy (ETH)' })
   await mean.fill('-')
   for (const button of buttons) await expect(button).toBeDisabled()
   await mean.fill('0')

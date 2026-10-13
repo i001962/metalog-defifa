@@ -308,3 +308,7 @@ section.forecast[aria-labelledby="your-view"] { margin-top: 0; }
 .schedule-dates span:first-child { transform: none; }
 .schedule-dates span:last-child { transform: translateX(-100%); }
 @media (max-width: 620px) { .schedule-dates span:nth-child(2) { display: none; } }
+.ticket .range-editor { max-width: none; margin-inline: -8px; }
+.ticket .range-editor td { padding: 6px 8px; }
+.ticket .range-editor td:first-child { padding-left: 8px; }
+.ticket .range-editor td:last-child { padding-right: 8px; text-align: right; }
