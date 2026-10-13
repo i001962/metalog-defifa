@@ -12,7 +12,6 @@ import { MarketFacts } from './MarketFacts'
 import { MarketLifecycle } from './MarketLifecycle'
 import { Activity } from './Activity'
 import { StageLamps } from './StageLamps'
-import { ChainIcon } from './ChainIcon'
 import type { MarketSnapshot } from '@/lib/defifa'
 
 type Tab = 'market' | 'nfts' | 'results' | 'rules'
@@ -75,12 +74,10 @@ export function MarketView({ chainId, projectId }: { chainId: number; projectId:
     <header className="market-hero">
       <StageLamps market={market} positions={distribution.totalSupply} />
       <div className="market-title">
-        <div><h1>{market.definition.prompt}</h1>
-          <p className="market-meta"><ChainIcon chainId={chainId} /><span>Game {market.projectId}</span></p></div>
+        <h1>{market.definition.prompt}</h1>
       </div>
     </header>
     {!current && <div className="actions" role="status">
-      <span className="hint">{page.blockNumber ? `Historical snapshot at block ${page.blockNumber}.` : query.isFetching ? 'Checking latest market data…' : 'Latest market data is unavailable.'} Refresh to enable entry and market actions.</span>
       <button type="button" disabled={query.isFetching} onClick={refresh}>Refresh to latest</button>
     </div>}
     <div className="tabs" role="tablist" aria-label="Market" onKeyDown={event => {

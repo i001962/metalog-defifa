@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { formatEther } from 'viem'
 import type { MarketSnapshot } from '@/lib/defifa'
+import { ChainIcon } from './ChainIcon'
 
 const STEP: Record<MarketSnapshot['stage'], number> = { countdown: -1, entry: 0, refund: 0, trading: 1, settlement: 2, complete: 3, 'no-contest': 3 }
 
@@ -72,7 +73,9 @@ export function StageLamps({ market, positions }: { market: MarketSnapshot; posi
   const usd = ethUsd === undefined ? null : Number(eth) * ethUsd
   return <div className="stage-bar" data-pot={pot.state}>
     <div className="pot">
-      <span className="pot-label">Pot</span>
+      <span className="pot-head"><span className="pot-label">Pot</span><span className="pip" aria-hidden="true">|</span>
+        <ChainIcon chainId={market.chainId} /><span>Game {market.projectId}</span></span>
+      <span>{eth} ETH <span className="pip" aria-hidden="true">|</span> {positions} positions</span>
       <strong>{usd === null ? `${eth} ETH` : `$${usd.toLocaleString('en-US', { minimumFractionDigits: usd < 1000 ? 2 : 0, maximumFractionDigits: usd < 1000 ? 2 : 0 })}`}</strong>
       <span className="pot-state">
         <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="7" width="10" height="8" rx="1.5" />
@@ -80,7 +83,6 @@ export function StageLamps({ market, positions }: { market: MarketSnapshot; posi
         {pot.label}
       </span>
       <span>{pot.note}</span>
-      <span>{eth} ETH, {positions} positions</span>
     </div>
     <ol className="lamps" aria-label="Game stages" data-stage={market.stage}>
     {lamps.map((lamp, index) => <li key={index} className="lamp" data-state={index < step ? 'past' : index === step ? 'current' : 'future'}

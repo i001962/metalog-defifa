@@ -55,7 +55,7 @@ test('market dates distinguish entry from observation and historical snapshots d
   await expect(page.getByText('Propose a result', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Load more results', exact: true }).click()
   await viewTab.click()
-  await expect(page.getByText('Historical snapshot at block 100.', { exact: false })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Refresh to latest', exact: true })).toBeVisible()
   await expect(entry).toBeDisabled()
   await expect(page.getByText('Example only. No positions are minted.', { exact: true })).toHaveCount(0)
   releasePinned()
