@@ -338,6 +338,7 @@ section.forecast[aria-labelledby="your-view"] { margin-top: 0; }
 .activity .activity-toggle { grid-row: span 2; }
 .chart-crowd-bar { stroke: none; }
 .chart-crowd-bar[data-selected="true"] { filter: saturate(1.4) brightness(.92); }
+.chart text.chart-chance { font-size: 13px; font-weight: 650; fill: var(--ink); font-variant-numeric: tabular-nums; pointer-events: none; }
 .chart-payout { fill: var(--blue); opacity: .85; }
 .callout-payout { color: var(--blue-soft); }
 .dot-a { fill: var(--accent); } .dot-b { fill: #e7a14a; } .dot-c { fill: var(--blue); opacity: .5; }
