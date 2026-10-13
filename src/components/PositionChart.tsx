@@ -142,7 +142,6 @@ export function PositionChart({ ranges, quantities, coefficients, crowd, payout,
         if (event.shiftKey || ['ArrowUp', 'ArrowDown'].includes(event.key)) transform(coefficients, 0, ['ArrowUp', 'ArrowRight'].includes(event.key) ? 1.05 : 1 / 1.05)
         else transform(coefficients, span * (event.key === 'ArrowLeft' ? -.015 : .015), 1)
       }}>
-      <title>{submitted ? 'Submitted curve and minted positions' : 'Your probability distribution'}</title>
       <desc id={descriptionId}>{`Bars show NFT share divided by range width; the line shows ${reference ? 'reference ' : ''}curve density. Focus or tap a range for its exact count and share. ${interactive ? 'Drag to move or widen the curve. Arrow keys move; Shift and arrow keys change spread.' : instruction}`}</desc>
       <defs><pattern id={dots} width="7" height="7" patternUnits="userSpaceOnUse">
         <circle cx="2" cy="2" r="1.7" className="dot-a" /><circle cx="5.5" cy="5" r="1.5" className="dot-b" /><circle cx="5" cy="1.5" r=".9" className="dot-c" />
@@ -168,7 +167,6 @@ export function PositionChart({ ranges, quantities, coefficients, crowd, payout,
           width={full * (1 - 2 * inset)} height={height} className="chart-bar"
           data-selected={selected?.range.tierId === range.tierId}
           tabIndex={0} aria-label={describe(position)} onFocus={() => { setSelectedTier(range.tierId); setCallout(true) }}>
-          <title>{describe(position)}</title>
         </rect>
       })}
       {tails.map(({ position, side }) => {
@@ -177,7 +175,6 @@ export function PositionChart({ ranges, quantities, coefficients, crowd, payout,
         return <polygon key={position.range.tierId} className="chart-bar chart-tail" data-selected={selected?.range.tierId === position.range.tierId}
           points={`${left},${axis} ${left},${top} ${right},${top} ${right},${axis}`}
           tabIndex={0} aria-label={describe(position)} onFocus={() => { setSelectedTier(position.range.tierId); setCallout(true) }}>
-          <title>{describe(position)}</title>
         </polygon>
       })}
       {overflow.map(range => <text key={`label-${range.tierId}`} x={tailX(sideOf(range)) + TAIL / 2} y={HEIGHT - 28} textAnchor="middle">

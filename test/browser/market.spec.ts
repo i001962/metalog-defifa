@@ -29,7 +29,7 @@ test('manual NFT buckets update chart, stake and export and recover from invalid
   expect(Math.abs(finiteBars[18].x + finiteBars[18].width - rightTick)).toBeLessThanOrEqual(1)
   expect(finiteBars[9].x + finiteBars[9].width / 2).toBeCloseTo(centerTick, 2)
   const center = chart.locator('rect').nth(9)
-  const centerDetails = await center.locator('title').textContent()
+  const centerDetails = await center.getAttribute('aria-label')
   const selected = page.getByRole('status', { name: 'Selected range', exact: true })
   await center.focus()
   await expect(selected).toContainText('-0.5% to < +0.5%')
@@ -178,7 +178,7 @@ test('example curve, decimals, raw validation and independent stake errors', asy
   const draft = JSON.parse(await readFile((await download.path())!, 'utf8'))
   const chart = page.getByRole('img', { name: 'Your probability distribution', exact: true })
   await expect(chart.locator('rect')).toHaveCount(19)
-  expect(await chart.locator('rect title').allTextContents()).toEqual(draft.ranges.slice(1, -1).map((range: { label: string }, index: number) =>
+  expect(await chart.locator('rect').evaluateAll(bars => bars.map(bar => bar.getAttribute('aria-label')))).toEqual(draft.ranges.slice(1, -1).map((range: { label: string }, index: number) =>
     `${range.label}: ${draft.allocation.quantities[index + 1]} NFTs (${(draft.allocation.actualProbabilities[index + 1] * 100).toFixed(2)}%)`))
   const overflow = page.getByRole('region', { name: 'Overflow positions', exact: true })
   for (const index of [0, draft.ranges.length - 1]) {
