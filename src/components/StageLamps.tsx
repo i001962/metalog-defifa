@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { formatEther } from 'viem'
 import type { MarketSnapshot } from '@/lib/defifa'
 
@@ -55,16 +56,31 @@ export function StageLamps({ market, positions }: { market: MarketSnapshot; posi
   ]
   const gaps = [span(entryClosesAt - entryOpensAt), span(resolvesAt - entryClosesAt), 'awaits ratification']
   const pot = POT[market.stage]
+  const eth = formatEther(BigInt(market.potWei))
+  // ponytail: Coinbase spot for display only; the pot itself is ETH, so a failed read just shows ETH.
+  const ethUsd = useQuery({
+    queryKey: ['eth-usd'],
+    queryFn: async () => {
+      const response = await fetch('https://api.coinbase.com/v2/prices/ETH-USD/spot')
+      if (!response.ok) throw new Error('ETH price unavailable')
+      const price = Number((await response.json()).data.amount)
+      if (!(price > 0)) throw new Error('ETH price unavailable')
+      return price
+    },
+    staleTime: 60_000, refetchInterval: 60_000, retry: 1,
+  }).data
+  const usd = ethUsd === undefined ? null : Number(eth) * ethUsd
   return <div className="stage-bar" data-pot={pot.state}>
     <div className="pot">
-      <strong>{formatEther(BigInt(market.potWei))}</strong>
+      <span className="pot-label">Pot</span>
+      <strong>{usd === null ? `${eth} ETH` : `$${usd.toLocaleString('en-US', { minimumFractionDigits: usd < 1000 ? 2 : 0, maximumFractionDigits: usd < 1000 ? 2 : 0 })}`}</strong>
       <span className="pot-state">
         <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="7" width="10" height="8" rx="1.5" />
           <path d={pot.state === 'locked' ? 'M5.5 7V5a2.5 2.5 0 0 1 5 0v2' : 'M5.5 7V5a2.5 2.5 0 0 1 5 0'} /></svg>
         {pot.label}
       </span>
       <span>{pot.note}</span>
-      <span>ETH pot, {positions} positions</span>
+      <span>{eth} ETH, {positions} positions</span>
     </div>
     <ol className="lamps" aria-label="Game stages" data-stage={market.stage}>
     {lamps.map((lamp, index) => <li key={index} className="lamp" data-state={index < step ? 'past' : index === step ? 'current' : 'future'}
