@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react'
 import type { MarketSnapshot } from '@/lib/defifa'
 
-const FLAME = 'M20 2C23 9 27 12 30 15C33 10 36 8 38 7C37 15 33 23 20 25C7 23 3 15 2 7C4 8 7 10 10 15C13 12 17 9 20 2Z'
 const STEP: Record<MarketSnapshot['stage'], number> = { countdown: 0, entry: 1, refund: 1, trading: 2, settlement: 3, complete: 4, 'no-contest': 4 }
 
 export function shortTime(seconds: number) {
@@ -38,7 +37,7 @@ export function StageLamps({ market }: { market: MarketSnapshot }) {
   return <ol className="lamps" aria-label="Game stages" data-stage={market.stage}>
     {lamps.map((lamp, index) => <li key={index} className="lamp" data-state={index < step ? 'past' : index === step ? 'current' : 'future'}
       aria-current={index === step ? 'step' : undefined}>
-      <svg viewBox="0 0 40 26" aria-hidden="true"><path d={FLAME} /></svg>
+      <svg viewBox="0 0 26 26" aria-hidden="true"><circle cx="13" cy="13" r="9" /></svg>
       <strong>{lamp.label}</strong>
       {lamp.countdown && <em>{lamp.countdown}</em>}
       {lamp.date && <small>{lamp.date}</small>}

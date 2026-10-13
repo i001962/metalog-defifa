@@ -7,7 +7,7 @@ export function utcTime(seconds: number) {
 
 export function MarketFacts({ definition, open }: { definition: MarketDefinition; open?: boolean }) {
   const ranges = marketRanges(definition)
-  return <details open={open}><summary>Market rules</summary><dl className="facts">
+  const facts = <><dl className="facts">
     <dt>Entry opens</dt><dd>{utcTime(definition.entryOpensAt)}</dd>
     <dt>Entry closes / observation starts</dt><dd>{utcTime(definition.entryClosesAt)}</dd>
     <dt>Observation ends</dt><dd>{utcTime(definition.resolvesAt)}</dd>
@@ -18,5 +18,7 @@ export function MarketFacts({ definition, open }: { definition: MarketDefinition
       ? <>{ranges.length - 2} equal ranges of {definition.rangeWidth}%, plus two overflow ranges.</>
       : <>{ranges.length} ranges with cutoffs at {ranges.slice(0, -1).map(range => formatPercentage(range.upper!, RANGE_DECIMAL_PLACES)).join(', ')}. Outer ranges include overflow.</>}</dd>
     <dt>Payout</dt><dd>The ratified result.</dd>
-  </dl><p className="hint"><a href="https://github.com/BallKidz/defifa/tree/main/src" target="_blank" rel="noreferrer">Built on Defifa, see engine code</a></p></details>
+  </dl><p className="hint"><a href="https://github.com/BallKidz/defifa/tree/main/src" target="_blank" rel="noreferrer">Built on Defifa, see engine code</a></p></>
+  // The Rules tab shows everything; elsewhere the rules fold away.
+  return open ? <div className="market-rules">{facts}</div> : <details><summary>Market rules</summary>{facts}</details>
 }

@@ -14,6 +14,7 @@ import { MarketLifecycle } from './MarketLifecycle'
 import { Entries } from './Entries'
 import { CrowdChart } from './CrowdChart'
 import { StageLamps } from './StageLamps'
+import { ChainIcon } from './ChainIcon'
 import type { MarketSnapshot } from '@/lib/defifa'
 
 type Tab = 'view' | 'crowd' | 'nfts' | 'results' | 'entries' | 'rules'
@@ -67,7 +68,7 @@ export function MarketView({ chainId, projectId }: { chainId: number; projectId:
   if (tab === null) setTab(focus)
   const shown = tab ?? focus
   const tabs: { id: Tab; label: string; count?: string }[] = [
-    { id: 'view', label: 'Your view' },
+    { id: 'view', label: 'Contribute' },
     { id: 'crowd', label: 'Crowd', count: distribution.totalSupply },
     { id: 'nfts', label: 'Your NFTs', count: address && lifecycle.account?.toLowerCase() === address.toLowerCase() ? lifecycle.inventory.totalOwned : undefined },
     { id: 'results', label: 'Results', count: lifecycle.scorecards.length ? String(lifecycle.scorecards.length) : undefined },
@@ -79,7 +80,7 @@ export function MarketView({ chainId, projectId }: { chainId: number; projectId:
       <StageLamps market={market} />
       <div className="market-title">
         <div><h1>{market.definition.prompt}</h1>
-          <p className="market-meta"><span>Game {market.projectId}</span><span>{chainForId(chainId).name}</span></p></div>
+          <p className="market-meta"><span>Game {market.projectId}</span><ChainIcon chainId={chainId} /></p></div>
         <p className="pot"><strong>{formatEther(BigInt(market.potWei))}</strong><span>ETH pot, {distribution.totalSupply} positions</span></p>
       </div>
     </header>

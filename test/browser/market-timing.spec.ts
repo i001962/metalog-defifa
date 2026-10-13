@@ -43,7 +43,7 @@ test('market dates distinguish entry from observation and historical snapshots d
   await expect(lamps.nth(1)).toHaveAttribute('aria-current', 'step')
   await expect(lamps.nth(1)).toContainText('until Oct 11, 00:10 UTC')
   await expect(lamps.nth(2)).toContainText('until Oct 11, 00:25 UTC')
-  const viewTab = page.getByRole('tab', { name: 'Your view', exact: true })
+  const viewTab = page.getByRole('tab', { name: 'Contribute', exact: true })
   await expect(viewTab).toHaveAttribute('aria-selected', 'true')
   const entry = page.getByRole('button', { name: 'Connect to enter', exact: true })
   await expect(entry).toBeEnabled()
