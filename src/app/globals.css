@@ -214,7 +214,8 @@ main:has(.market) { padding-top: 22px; }
 .lamp em { font: italic 600 15px/1.2 var(--serif); color: var(--cta); font-variant-numeric: tabular-nums; }
 .lamp small { font-size: 11px; line-height: 14px; min-height: 14px; white-space: nowrap; }
 /* The pot is the start of the wire: its padlock follows the stage. */
-.stage-bar { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0; align-items: start; }
+/* A fixed pot column keeps the lamps still while stages change. */
+.stage-bar { display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: 0; align-items: start; }
 .pot { position: relative; display: grid; justify-items: start; gap: 2px; padding-right: 20px; color: var(--muted); font-size: 12px; line-height: 1.3; }
 .pot strong { font: 600 clamp(28px, 3.4vw, 46px)/1 var(--serif); color: var(--cta); font-variant-numeric: tabular-nums; margin-top: 4px; }
 .pot-head { display: inline-flex; align-items: center; gap: 6px; line-height: 14px; }
@@ -232,6 +233,12 @@ main:has(.market) { padding-top: 22px; }
 @media (max-width: 620px) {
   .stage-bar { grid-template-columns: 1fr; gap: 14px; }
 }
+/* Each lamp previews its stage; the live lamp keeps a ring while another is previewed. */
+.lamp-pick { position: absolute; inset: 0; z-index: 1; min-height: 0; margin: 0; padding: 0; border: 0; background: none; cursor: pointer; }
+.lamp-pick:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.lamp:hover strong { text-decoration: underline; text-underline-offset: 3px; }
+.lamp[data-live="true"] circle { stroke: var(--accent); stroke-dasharray: 3 3; }
+.preview-bar { align-items: center; padding: 8px 12px; margin-top: 12px; border: 1px dashed var(--accent); color: var(--cta); font-weight: 600; font-size: 14px; }
 @keyframes flicker { 0%, 100% { opacity: 1; } 45% { opacity: .86; } 50% { opacity: .97; } 70% { opacity: .9; } }
 @media (prefers-reduced-motion: reduce) { .lamp[data-state="current"] circle { animation: none; } }
 

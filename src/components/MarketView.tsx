@@ -13,8 +13,11 @@ import { MarketLifecycle } from './MarketLifecycle'
 import { Activity } from './Activity'
 import { StageLamps } from './StageLamps'
 import type { MarketSnapshot } from '@/lib/defifa'
+import { phaseCapabilities } from '@/lib/lifecycle-phase'
 
 type Tab = 'market' | 'nfts' | 'results' | 'rules'
+const PHASE: Record<MarketSnapshot['stage'], number> = { countdown: 0, entry: 1, refund: 2, trading: 3, settlement: 3, complete: 4, 'no-contest': 5 }
+
 /** The one panel that matters most in each stage. */
 const FOCUS: Record<MarketSnapshot['stage'], Tab> = { countdown: 'market', entry: 'market', refund: 'nfts', trading: 'market', settlement: 'results', complete: 'market', 'no-contest': 'nfts' }
 
@@ -40,11 +43,22 @@ export function MarketView({ chainId, projectId }: { chainId: number; projectId:
   }, [query.data, query.isPlaceholderData, chainId, projectId])
   // The first snapshot picks the panel; a refresh that moves the stage lights its tab but never yanks an open panel away.
   const [tab, setTab] = useState<Tab | null>(null)
+  // A previewed stage restyles the page from the live snapshot and is never current, so every action stays disabled.
+  const [preview, setPreview] = useState<MarketSnapshot['stage'] | null>(null)
   const [lastResult, setLastResult] = useState<LifecycleSnapshot | null>(null)
   if (query.data && !query.isPlaceholderData && query.data !== lastResult) setLastResult(query.data)
   const previous = lastResult?.market.chainId === chainId && lastResult.market.projectId === projectId ? lastResult : null
   const result = query.data?.market.chainId === chainId && query.data.market.projectId === projectId ? query.data : null
-  const lifecycle = result ?? previous
+  const live = result ?? previous
+  const previewing = !!live && preview !== null && preview !== live.market.stage
+  const lifecycle = live && previewing ? (() => {
+    const market = { ...live.market, stage: preview!, phase: PHASE[preview!] }
+    return { ...live, market, ...phaseCapabilities(market, !!live.account) }
+  })() : live
+  function showStage(stage: MarketSnapshot['stage']) {
+    setPreview(stage === live?.market.stage ? null : stage)
+    setTab(FOCUS[stage])
+  }
   function refresh() {
     setPagination({ scope })
     void queryClient.invalidateQueries({ queryKey: ['market-play', chainId, projectId] })
@@ -53,7 +67,7 @@ export function MarketView({ chainId, projectId }: { chainId: number; projectId:
   if (!lifecycle && (query.isPending || query.isFetching)) return <p role="status">Loading market…</p>
   if (!lifecycle) return <><h1>Market unavailable</h1><p className="error" role="alert">{query.error?.message || 'No market data was returned.'}</p><button onClick={refresh}>Retry</button></>
   const market = lifecycle.market
-  const current = !page.blockNumber && !query.isPlaceholderData && !query.error && !!query.data
+  const current = !previewing && !page.blockNumber && !query.isPlaceholderData && !query.error && !!query.data
   const data = marketData(market)
   const distribution = data.positionDistribution
   const supplies = market.tiers.map(tier => Number(tier.supply))
@@ -72,12 +86,15 @@ export function MarketView({ chainId, projectId }: { chainId: number; projectId:
   ]
   return <div className="market">
     <header className="market-hero">
-      <StageLamps market={market} positions={distribution.totalSupply} />
+      <StageLamps market={market} positions={distribution.totalSupply} onPreview={showStage} liveStage={previewing ? live!.market.stage : undefined} />
       <div className="market-title">
         <h1>{market.definition.prompt}</h1>
       </div>
     </header>
-    {!current && <div className="actions" role="status">
+    {previewing ? <div className="actions preview-bar" role="status">
+      <span>Preview <span className="pip" aria-hidden="true">|</span> nothing can be sent</span>
+      <button type="button" onClick={() => showStage(live!.market.stage)}>Back to live</button>
+    </div> : !current && <div className="actions" role="status">
       <button type="button" disabled={query.isFetching} onClick={refresh}>Refresh to latest</button>
     </div>}
     <div className="tabs" role="tablist" aria-label="Market" onKeyDown={event => {

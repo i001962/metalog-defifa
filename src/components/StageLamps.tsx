@@ -36,7 +36,16 @@ const POT: Record<MarketSnapshot['stage'], { state: 'open' | 'locked' | 'claimab
 }
 
 /** Gas lamps along the top of the stage: lit up to the game's current stage, with the next boundary counting down. */
-export function StageLamps({ market, positions }: { market: MarketSnapshot; positions: string }) {
+/** The stage each lamp previews. */
+const LAMP_STAGE: MarketSnapshot['stage'][] = ['entry', 'trading', 'settlement', 'complete']
+
+export function StageLamps({ market, positions, liveStage, onPreview }: {
+  market: MarketSnapshot
+  positions: string
+  /** The chain's stage while another one is previewed. */
+  liveStage?: MarketSnapshot['stage']
+  onPreview?: (stage: MarketSnapshot['stage']) => void
+}) {
   const { entryOpensAt, entryClosesAt, resolvesAt } = market.definition
   const [now, setNow] = useState(market.blockTimestamp)
   useEffect(() => {
@@ -86,7 +95,9 @@ export function StageLamps({ market, positions }: { market: MarketSnapshot; posi
     </div>
     <ol className="lamps" aria-label="Game stages" data-stage={market.stage}>
     {lamps.map((lamp, index) => <li key={index} className="lamp" data-state={index < step ? 'past' : index === step ? 'current' : 'future'}
-      aria-current={index === step ? 'step' : undefined}>
+      aria-current={index === step ? 'step' : undefined} data-live={liveStage !== undefined && STEP[liveStage] === index}>
+      {onPreview && <button type="button" className="lamp-pick" aria-label={`Preview ${lamp.label}`} aria-pressed={index === step}
+        onClick={() => onPreview(index === STEP[liveStage ?? market.stage] ? liveStage ?? market.stage : LAMP_STAGE[index])} />}
       <strong>{lamp.label}</strong>
       <span className="lamp-note">{lamp.note}</span>
       <svg viewBox="0 0 26 26" aria-hidden="true"><circle cx="13" cy="13" r="9" /></svg>
