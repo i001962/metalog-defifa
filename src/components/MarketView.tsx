@@ -10,7 +10,6 @@ import { useWallet } from '@/providers/Providers'
 import { ForecastEditor } from './ForecastEditor'
 import { MarketFacts } from './MarketFacts'
 import { MarketLifecycle } from './MarketLifecycle'
-import { Activity } from './Activity'
 import { StageLamps } from './StageLamps'
 import { OrderBook } from './OrderBook'
 import { readBook } from '@/lib/book'
@@ -124,10 +123,8 @@ export function MarketView({ chainId, projectId }: { chainId: number; projectId:
     <div role="tabpanel" id="panel-market" aria-labelledby="tab-market" hidden={shown !== 'market'}>
       <ForecastEditor key={`${chainId}:${projectId}`} definition={market.definition} market={market} current={current} onSubmitted={refresh}
         crowd={supplies} payout={data.ratifiedPayoutShares} live={bookOdds} exports={exports('Market', false)}
-        below={<>
-          {inPlay && <OrderBook market={market} books={book?.books ?? null} sample={!!book?.sample} owned={mine} scorecards={lifecycle.scorecards} />}
-          <Activity market={market} active={shown === 'market'} />
-        </>} />
+        // ponytail: Activity stays unmounted until Bendystraw indexes Defifa; block-window log reads are too slow for long entry periods.
+        below={inPlay && <OrderBook market={market} books={book?.books ?? null} sample={!!book?.sample} owned={mine} scorecards={lifecycle.scorecards} />} />
     </div>
     <MarketLifecycle key={`play:${chainId}:${projectId}`} lifecycle={lifecycle} current={current}
       panel={shown === 'nfts' || shown === 'results' ? shown : null}

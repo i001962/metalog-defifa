@@ -53,6 +53,7 @@ test('in play, the Market tab adds an order book that cannot trade without a ven
   await page.goto('/markets/84532/47')
   const book = page.getByRole('region', { name: 'Order book', exact: true })
   await expect(book).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Activity', exact: true })).toHaveCount(0)
   // Production has no venue: no sample prices or odds, and nothing can be bought or sold.
   await expect(book.getByText('Sample book', { exact: false })).toHaveCount(0)
   await expect(book.getByText('No trading venue is connected yet.', { exact: true })).toBeVisible()

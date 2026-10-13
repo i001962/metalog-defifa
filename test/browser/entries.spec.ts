@@ -20,6 +20,8 @@ const market: LifecycleSnapshot = {
 const entry: EntryHistoryEntry = { status: 'verified-curve', transactionHash: hash, blockNumber: '95', timestamp: definition.entryOpensAt + 600,
   account, beneficiary: account, stakeWei: '4000000000000', tokenIds: ['1000000001', '2000000001', '2000000002', '3000000001'], quantities: [1, 2, 1], coefficients: [0, 1, 0, 0, 0, 0] }
 const manualHash = `0x${'cd'.repeat(32)}` as const
+// Activity is unmounted until Bendystraw indexes Defifa; these run again when it returns.
+test.skip(true, 'Activity is hidden until Bendystraw indexes Defifa')
 const activity: ActivityPage = { schema: 'metalog.activity.v1', blockNumber: '100', complete: true, nextCursor: null, events: [
   { kind: 'exit', transactionHash: `0x${'ef'.repeat(32)}`, blockNumber: '99', timestamp: definition.resolvesAt, account, quantities: [0, 1, 0] },
   { kind: 'entry', transactionHash: hash, blockNumber: '95', timestamp: definition.entryOpensAt + 600, account, quantities: [1, 2, 1] },

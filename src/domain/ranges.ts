@@ -1,4 +1,4 @@
-import { cdf, fitMetalog, type Coefficients } from './distribution'
+import { fitMetalog, type Coefficients } from './distribution'
 
 export type RangeBin = {
   tierId: number
