@@ -9,6 +9,12 @@ export function shortTime(seconds: number) {
   return new Intl.DateTimeFormat('en', { timeZone: 'UTC', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }).format(seconds * 1000) + ' UTC'
 }
 
+/** Whole days, hours and minutes, skipping zero parts. */
+function span(seconds: number) {
+  const d = Math.floor(seconds / 86_400), h = Math.floor(seconds % 86_400 / 3_600), m = Math.floor(seconds % 3_600 / 60)
+  return [d && `${d}d`, h && `${h}h`, m && `${m}m`].filter(Boolean).join(' ') || '0m'
+}
+
 export function remaining(seconds: number) {
   if (seconds <= 0) return 'any moment'
   const d = Math.floor(seconds / 86_400), h = Math.floor(seconds % 86_400 / 3_600), m = Math.floor(seconds % 3_600 / 60)
@@ -35,6 +41,7 @@ export function StageLamps({ market }: { market: MarketSnapshot }) {
     { label: 'Results', note: 'Decide outcome', date: shortTime(resolvesAt), countdown: '' },
     { label: market.stage === 'no-contest' ? 'No contest' : 'Claims', note: 'Collect earnings', date: '', countdown: '' },
   ]
+  const gaps = [span(entryClosesAt - entryOpensAt), span(resolvesAt - entryClosesAt), 'awaits ratification']
   return <ol className="lamps" aria-label="Game stages" data-stage={market.stage}>
     {lamps.map((lamp, index) => <li key={index} className="lamp" data-state={index < step ? 'past' : index === step ? 'current' : 'future'}
       aria-current={index === step ? 'step' : undefined}>
@@ -43,6 +50,7 @@ export function StageLamps({ market }: { market: MarketSnapshot }) {
       <span className="lamp-note">{lamp.note}</span>
       {lamp.countdown && <em>{lamp.countdown}</em>}
       {lamp.date && <small>{lamp.date}</small>}
+      {gaps[index] && <span className="lamp-gap"><span>{gaps[index]}</span></span>}
     </li>)}
   </ol>
 }
