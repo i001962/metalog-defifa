@@ -359,8 +359,13 @@ section.forecast[aria-labelledby="your-view"] { margin-top: 0; }
 .chart-crowd-bar { stroke: none; }
 .chart-crowd-bar[data-selected="true"] { filter: saturate(1.4) brightness(.92); }
 .chart-note { position: absolute; top: 0; left: 0; margin: 0; pointer-events: none; }
-.chart text.chart-chance { font-size: 13px; font-weight: 650; fill: var(--ink); font-variant-numeric: tabular-nums; pointer-events: none; }
-.chart .chart-chance-after { fill: var(--blue); }
+/* Ask the distribution: one answer above the chart, a dashed edge on it. */
+.chart-ask { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin: 0 0 6px; color: var(--muted); font-size: 14px; }
+.chart-ask strong { font: 600 clamp(26px, 3vw, 38px)/1 var(--serif); color: var(--ink); font-variant-numeric: tabular-nums; }
+.chart-ask .chart-ask-moved { color: var(--blue); }
+.chart-ask button { min-height: 0; margin: 0; padding: 0; border: 0; background: none; font: inherit; color: var(--ink); text-decoration: underline dotted; text-underline-offset: 3px; cursor: pointer; }
+.chart-edge line { stroke: var(--ink); stroke-width: 1.5; stroke-dasharray: 4 4; }
+.chart .chart-edge text { font-weight: 650; fill: var(--ink); }
 .chart-payout { fill: var(--blue); opacity: .85; }
 .callout-payout { color: var(--blue-soft); }
 .dot-a { fill: var(--accent); } .dot-b { fill: #e7a14a; } .dot-c { fill: var(--blue); opacity: .5; }
@@ -408,6 +413,5 @@ section.forecast[aria-labelledby="your-view"] { margin-top: 0; }
 .book-forms fieldset { border: 1px solid var(--line); padding: 10px 12px; margin: 0; min-width: 0; }
 .book-forms legend { font-size: 13px; font-weight: 600; padding: 0 4px; }
 .book-forms .field { margin-bottom: 8px; }
-.distribution-live { color: var(--blue); }
 /* Phones trade from the range panel; the table keeps prices only, so nothing scrolls sideways. */
 @media (max-width: 620px) { .book-sides, .book-forms { grid-template-columns: 1fr; } .book-table .book-trade { display: none; } .book-table th:last-child { display: none; } }

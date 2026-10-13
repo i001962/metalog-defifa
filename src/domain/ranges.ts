@@ -217,3 +217,13 @@ export function binForOutcome(ranges: readonly RangeBin[], outcome: number): Ran
   if (!bin) throw new Error('No range covers this outcome.')
   return bin
 }
+
+/** The edges between ranges, low to high: where "at or above" questions can be answered exactly. */
+export function rangeEdges(ranges: readonly RangeBin[]): number[] {
+  return [...new Set(ranges.flatMap(range => [range.lower, range.upper]).filter((edge): edge is number => edge !== null))].sort((a, b) => a - b)
+}
+
+/** The share of outcomes at or above an edge: every range that starts at or past it. */
+export function shareAtOrAbove(ranges: readonly RangeBin[], shares: readonly number[], edge: number): number {
+  return ranges.reduce((sum, range, index) => range.lower !== null && range.lower >= edge ? sum + (shares[index] ?? 0) : sum, 0)
+}

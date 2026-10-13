@@ -59,7 +59,8 @@ test('in play, the Market tab adds an order book that cannot trade without a ven
   for (const button of await book.getByRole('button', { name: /^(Buy|Sell)$/ }).all()) await expect(button).toBeDisabled()
   await book.getByRole('button', { name: snapshot.market.ranges[1].label, exact: true }).click()
   await expect(book.getByRole('button', { name: 'Review bid', exact: true })).toBeDisabled()
-  await expect(page.locator('.chart-chance-after')).toHaveCount(0)
+  // No venue, so the asked chance shows the crowd alone.
+  await expect(page.getByText('on the book', { exact: false })).toHaveCount(0)
   // Entry is not play: the book is not shown.
   await page.getByRole('button', { name: 'Preview Enter', exact: true }).click()
   await expect(book).toHaveCount(0)

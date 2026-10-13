@@ -3,7 +3,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { positionDensities } from '@/domain/allocation'
 import { densityBuckets, type Coefficients } from '@/domain/distribution'
-import { binForOutcome, formatPercentage, type RangeBin } from '@/domain/ranges'
+import { binForOutcome, formatPercentage, rangeEdges, shareAtOrAbove, type RangeBin } from '@/domain/ranges'
 
 const LEFT = 8, RIGHT = 8, TOP = 24, BOTTOM = 51, TAIL_GAP = 10, TAIL_SHARE = .5
 
@@ -33,6 +33,10 @@ export function PositionChart({ ranges, quantities, coefficients, crowd, payout,
   const HEIGHT = width < 700 ? 290 : 380
   const [selectedTier, setSelectedTier] = useState<number | null>(null)
   const [callout, setCallout] = useState(false)
+  // One question instead of every bucket: the chance the outcome ends at or above (or below) an edge between ranges.
+  const edges = useMemo(() => rangeEdges(ranges), [ranges])
+  const [edgeAt, setEdgeAt] = useState<number | null>(null)
+  const [below, setBelow] = useState(false)
   useEffect(() => {
     const observer = new ResizeObserver(([entry]) => setWidth(Math.max(300, entry.contentRect.width)))
     if (element.current) observer.observe(element.current)
@@ -101,6 +105,8 @@ export function PositionChart({ ranges, quantities, coefficients, crowd, payout,
     const bounds = element.current?.getBoundingClientRect()
     if (!bounds || bounds.width <= 0 || !basis) return
     const outcome = low + ((clientX - bounds.left) / bounds.width * width - plotLeft) / plotWidth * span
+    // ponytail: snaps to the nearest range edge, where the crowd's answer is exact; between edges would need a fitted curve.
+    setEdgeAt(edges.reduce((best, item) => Math.abs(item - outcome) < Math.abs(best - outcome) ? item : best, edges[0]))
     const range = binForOutcome(ranges, outcome)
     const position = basis.find(item => item.range.tierId === range.tierId)
     if (position) setSelectedTier(position.range.tierId)
@@ -112,12 +118,29 @@ export function PositionChart({ ranges, quantities, coefficients, crowd, payout,
     onChange(original.map((value, index) => index === 0 ? value + shift : value * scale) as unknown as Coefficients)
   }
 
-  const crowdTotal = crowdAll.reduce((sum, position) => sum + position.quantity, 0)
+  // The asked edge, defaulting to the one nearest no change.
+  const edge = edgeAt ?? (edges.length ? edges.reduce((best, item) => Math.abs(item) < Math.abs(best) ? item : best, edges[0]) : null)
   const yourTotal = mineShown.reduce((sum, position) => sum + position.quantity, 0)
-  const percent = (share: number) => share > 0 && share < .01 ? '<1%' : `${Math.round(share * 100)}%`
+  const percent = (share: number) => share > 0 && share < .01 ? '<1%' : share < 1 && share > .99 ? '>99%' : `${Math.round(share * 100)}%`
+  const asked = (shares: readonly number[]) => {
+    if (edge === null) return null
+    const total = shares.reduce((sum, share) => sum + share, 0)
+    if (!(total > 0)) return null
+    const above = shareAtOrAbove(ranges, shares, edge) / total
+    return below ? 1 - above : above
+  }
+  // The crowd answers, then your order or the book moves the answer; without a crowd your order answers alone.
+  const crowdShares = crowdAll.length ? crowdAll.map(position => position.share) : null
+  const answer = asked(crowdShares ?? mineShown.map(position => position.share))
+  const moved = crowdShares && yourTotal > 0 ? { value: asked(crowdAll.map((position, index) => position.quantity + (mineShown[index]?.quantity ?? 0))), by: 'with your order' }
+    : crowdShares && live?.every(chance => chance !== null) ? { value: asked(live as number[]), by: 'on the book' } : null
   const crowdShare = (tierId: number) => crowdAll.find(position => position.range.tierId === tierId)?.share
   return <>
     <div className="chart-frame">
+    {answer !== null && edge !== null && <p className="chart-ask" aria-live="polite">
+      <strong>{percent(answer)}</strong>{moved?.value != null && <strong className="chart-ask-moved"> → {percent(moved.value)}</strong>}
+      <span>chance it ends <button type="button" onClick={() => setBelow(!below)}>{below ? 'below' : 'at or above'}</button> {formatPercentage(edge, 3)}{moved?.value != null && `, ${moved.by}`}</span>
+    </p>}
     <svg ref={element} className="chart" style={interactive ? undefined : { cursor: 'default', touchAction: 'auto', userSelect: 'auto' }}
       viewBox={`0 0 ${width} ${HEIGHT}`} role="img" aria-label={submitted ? 'Submitted curve and minted positions' : 'Your probability distribution'} tabIndex={0} aria-describedby={descriptionId}
       onPointerLeave={event => { if (event.pointerType === 'mouse' && !drag.current) setCallout(false) }}
@@ -172,7 +195,7 @@ export function PositionChart({ ranges, quantities, coefficients, crowd, payout,
         return <rect key={range.tierId} x={left + 1} y={axis - height}
           width={Math.max(0, full - 2)} height={height} className="chart-bar"
           data-selected={selected?.range.tierId === range.tierId}
-          tabIndex={0} aria-label={describe(position)} onFocus={() => { setSelectedTier(range.tierId); setCallout(true) }}>
+          tabIndex={0} aria-label={describe(position)} onFocus={() => { setSelectedTier(range.tierId); setEdgeAt(range.lower); setCallout(true) }}>
         </rect>
       })}
       {tails.map(({ position, side }) => {
@@ -183,24 +206,10 @@ export function PositionChart({ ranges, quantities, coefficients, crowd, payout,
           tabIndex={0} aria-label={describe(position)} onFocus={() => { setSelectedTier(position.range.tierId); setCallout(true) }}>
         </polygon>
       })}
-      {crowdAll.map((position, index) => {
-        const yours = mineShown[index]?.quantity ?? 0
-        if (position.quantity === 0 && yours === 0) return null
-        const { range } = position
-        // The second number is the share after your order while entering, or the book's odds while the game plays out.
-        const next = yourTotal > 0 ? (position.quantity + yours) / (crowdTotal + yourTotal) : live?.[index] ?? null
-        const label = `${percent(position.share)}${next === null ? '' : ` → ${percent(next)}`}`
-        // Centered above the bar and the curve; nudged inward only when it would run past the chart edge (about 8px per character).
-        const curveTop = mine && range.lower !== null && range.upper !== null
-          ? Math.max(0, ...(density?.buckets.filter(bucket => bucket.upper > range.lower! && bucket.lower < range.upper!).map(bucket => bucket.density) ?? [])) : 0
-        const half = label.length * 4
-        return <text key={`chance-${range.tierId}`} className="chart-chance" textAnchor="middle"
-          x={Math.min(width - RIGHT - half, Math.max(LEFT + half, barCenter(position)))}
-          y={axis - Math.max(tallest(range, index), curveTop) / peak * plotHeight - 6}>
-          {percent(position.share)}
-                    {next !== null && <tspan className="chart-chance-after">{` → ${percent(next)}`}</tspan>}
-        </text>
-      })}
+      {edge !== null && <g className="chart-edge" pointerEvents="none">
+        <line x1={x(edge)} x2={x(edge)} y1={axis} y2={TOP - 8} />
+        <text x={x(edge)} y={TOP - 12} textAnchor="middle">{formatPercentage(edge, 3)}</text>
+      </g>}
       {overflow.map(range => <text key={`label-${range.tierId}`} x={tailX(sideOf(range)) + TAIL / 2} y={HEIGHT - 28} textAnchor="middle">
         {sideOf(range) === 'low' ? '<' : '≥'}</text>)}
       {mine && <path d={line} className="chart-curve" pointerEvents="none" />}
@@ -213,7 +222,7 @@ export function PositionChart({ ranges, quantities, coefficients, crowd, payout,
     </svg>
     {/* The editing hint lives beside the controls; chart states overlay the chart so edits never shift the page. */}
     {mine && (submitted || readOnly) && <p className="hint chart-note">{instruction}</p>}
-    {callout && selected && <div className="chart-callout" aria-hidden="true" style={{
+    {mine && callout && selected && <div className="chart-callout" aria-hidden="true" style={{
       left: `${Math.min(88, Math.max(12, barCenter(selected) / width * 100))}%`,
       top: `${Math.max(0, barTop(selected) / HEIGHT * 100)}%`,
     }}>
@@ -229,7 +238,6 @@ export function PositionChart({ ranges, quantities, coefficients, crowd, payout,
       {mine && <span className={crowdAll.length ? 'distribution-bars distribution-order' : 'distribution-bars'}>{crowdAll.length ? 'Your order' : 'NFT positions'}</span>}
       {crowdAll.length > 0 && (mine || payout) && <span className="distribution-crowd">Crowd</span>}
       {payout && <span className="distribution-payout">Ratified payout</span>}
-      {!mine && live?.some(chance => chance !== null) && <span className="distribution-live">Opening share → book odds</span>}
     </div>
     <div className="distribution-selection" role="status" aria-label="Selected range">
       {selected ? describe(selected) : 'NFT quantities cannot be displayed.'}
