@@ -12,6 +12,7 @@ import type { PreparedTransaction } from './transaction'
 import { decodeDefifaTransactionCall } from './transaction-scope'
 import { SCORECARD_WEIGHT_TOTAL, type TierWeight } from '../domain/scorecard'
 import { MAX_POSITIONS } from '../domain/allocation'
+import { phaseCapabilities, type CashOutMode } from './lifecycle-phase'
 export { SCORECARD_WEIGHT_TOTAL, scorecardWeightsFromPercentages, type TierWeight } from '../domain/scorecard'
 
 const TOKEN_PAGE_SIZE = 200
@@ -61,7 +62,7 @@ export type LifecycleSnapshot = {
   canDelegate: boolean
   canFulfill: boolean
   canTriggerNoContest: boolean
-  cashOutMode: 'refund' | 'cash-out' | 'no-contest-refund' | null
+  cashOutMode: CashOutMode
 }
 export type LifecycleAction =
   | { kind: 'transfer'; tokenId: string; to: Address }
@@ -122,9 +123,6 @@ function tokenIdsFor(market: MarketSnapshot, ids: readonly string[]): bigint[] {
   }
   return result.sort((a, b) => a < b ? -1 : a > b ? 1 : 0)
 }
-
-const modeFor = (phase: number): LifecycleSnapshot['cashOutMode'] =>
-  phase === 1 || phase === 2 ? 'refund' : phase === 4 ? 'cash-out' : phase === 5 ? 'no-contest-refund' : null
 
 async function freshMarket(market: MarketSnapshot): Promise<{ client: PublicClient; market: MarketSnapshot }> {
   const client = publicClientForChain(market.chainId)
@@ -283,11 +281,7 @@ export async function readLifecycle(
     scorecardsNextCursor: cards.next, scorecardsComplete: cards.complete,
     attestationGraceSeconds: Number(grace), timelockSeconds: Number(timelock),
     noContestAfter: market.definition.entryClosesAt + Number(safety[1]),
-    canSubmitScorecard: !!owner && market.phase === 3,
-    canDelegate: !!owner && market.phase === 1,
-    canFulfill: !!owner && market.phase === 4 && !market.commitmentsFulfilled,
-    canTriggerNoContest: !!owner && market.phase === 5 && !market.noContestTriggered,
-    cashOutMode: modeFor(market.phase),
+    ...phaseCapabilities(market, !!owner),
   }
 }
 
@@ -300,7 +294,7 @@ function cashOutArgs(market: MarketSnapshot, account: Address, ids: readonly big
 }
 
 async function quoteAt(client: PublicClient, market: MarketSnapshot, ids: readonly bigint[], account: Address): Promise<CashOutQuote> {
-  if (!modeFor(market.phase)) throw new Error('NFTs cannot be cashed out during this game phase.')
+  if (!phaseCapabilities(market, true).cashOutMode) throw new Error('NFTs cannot be cashed out during this game phase.')
   if (market.phase === 5 && !market.noContestTriggered) throw new Error('Open the native no-contest refunds before cashing out.')
   await assertOwned(client, market, ids, account)
   const d = deploymentForChain(market.chainId)
