@@ -162,7 +162,7 @@ describe('native lifecycle preparation', () => {
     owners.set(firstId.toString(), other)
     await expect(prepareLifecycleAction(market, { kind: 'transfer', tokenId: firstId.toString(), to: other }, account)).rejects.toThrow('no longer owns')
     await expect(prepareLifecycleAction(market, { kind: 'cash-out', tokenIds: [firstId.toString(), firstId.toString()], minReclaimedWei: '0' }, account)).rejects.toThrow('only once')
-    await expect(prepareLifecycleAction(market, { kind: 'cash-out', tokenIds: Array(201).fill(firstId.toString()), minReclaimedWei: '0' }, account)).rejects.toThrow('200')
+    await expect(prepareLifecycleAction(market, { kind: 'cash-out', tokenIds: Array(161).fill(firstId.toString()), minReclaimedWei: '0' }, account)).rejects.toThrow('160')
   })
 
   it('pins reviewed action inputs even when the caller changes its draft', async () => {

@@ -1,7 +1,11 @@
 import { cdf, validateCoefficients, type Coefficients } from './distribution'
 import { MAX_RANGE_COUNT, type RangeBin } from './ranges'
 
-export const MAX_POSITIONS = 200
+// Measured on a Base Sepolia fork: ~250k + ~47k gas per position. Wallet sends double the estimate, and
+// Base caps a transaction at 2^24 gas, so 160 positions (~8M estimated, ~16M sent) is the largest safe entry.
+export const MAX_POSITIONS = 160
+/** Recorded entries made before the cap was lowered stay verifiable; this matches the 14,000-character metadata audit limit. */
+export const MAX_RECORDED_POSITIONS = 213
 
 export type Allocation = {
   mode: 'curve' | 'manual'
@@ -30,9 +34,9 @@ export function positionDensities(ranges: readonly RangeBin[], quantities: reado
 }
 
 /** Integrate each range, then apportion indivisible positions by largest remainder. */
-export function allocatePositions(coefficients: Coefficients, ranges: readonly RangeBin[], count: number): Allocation {
+export function allocatePositions(coefficients: Coefficients, ranges: readonly RangeBin[], count: number, limit = MAX_POSITIONS): Allocation {
   const a = validateCoefficients(coefficients)
-  validatePositionCount(count)
+  validatePositionCount(count, limit)
   const probabilities = rangeProbabilities(a, ranges)
   const quotas = probabilities.map(probability => probability * count)
   const quantities = quotas.map(Math.floor)
@@ -47,11 +51,11 @@ export function allocatePositions(coefficients: Coefficients, ranges: readonly R
 }
 
 /** Explicit bucket counts own the stake; the curve remains a comparison only. */
-export function allocateManualPositions(coefficients: Coefficients, ranges: readonly RangeBin[], quantities: readonly number[]): Allocation {
+export function allocateManualPositions(coefficients: Coefficients, ranges: readonly RangeBin[], quantities: readonly number[], limit = MAX_POSITIONS): Allocation {
   const probabilities = rangeProbabilities(validateCoefficients(coefficients), ranges)
   validateQuantities(quantities, ranges.length)
   const count = quantities.reduce((sum, quantity) => sum + quantity, 0)
-  validatePositionCount(count)
+  validatePositionCount(count, limit)
   return allocationForQuantities('manual', ranges, probabilities, [...quantities], count)
 }
 
@@ -62,9 +66,9 @@ function validateQuantities(quantities: readonly number[], length: number): void
   }
 }
 
-function validatePositionCount(count: number): void {
-  if (!Number.isInteger(count) || count < 1 || count > MAX_POSITIONS) {
-    throw new Error(`Choose 1 to ${MAX_POSITIONS} positions.`)
+function validatePositionCount(count: number, limit: number): void {
+  if (!Number.isInteger(count) || count < 1 || count > limit) {
+    throw new Error(`Choose 1 to ${limit} positions.`)
   }
 }
 

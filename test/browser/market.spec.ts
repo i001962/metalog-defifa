@@ -107,7 +107,7 @@ test('manual NFT buckets update chart, stake and export and recover from invalid
     await expect(page.getByRole('button', { name: 'Download draft' })).toBeDisabled()
     for (const name of ['Simple', 'Expressive', 'By range']) await expect(page.getByRole('button', { name, exact: true })).toBeEnabled()
   }
-  await counts.first().fill('201')
+  await counts.first().fill('161')
   await expect(page.getByRole('button', { name: 'Download draft' })).toBeDisabled()
   for (const input of await counts.all()) await input.fill('0')
   await expect(page.getByRole('button', { name: 'Download draft' })).toBeDisabled()

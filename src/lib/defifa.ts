@@ -3,7 +3,7 @@ import {
   parseAbi, parseEventLogs, zeroAddress, type Address, type Hex, type PublicClient, type TransactionReceipt,
 } from 'viem'
 import { buildDefifaPayMetadata } from '@bananapus/nana-sdk-core/v6'
-import { allocateManualPositions, allocatePositions, type Allocation } from '../domain/allocation'
+import { allocateManualPositions, allocatePositions, MAX_RECORDED_POSITIONS, type Allocation } from '../domain/allocation'
 import { validateCoefficients, type Coefficients } from '../domain/distribution'
 import {
   encodeMarketDefinition, marketRanges, SCORECARD_TIMEOUT_BUFFER_SECONDS, validateMarket,
@@ -319,8 +319,8 @@ export function verifyRecordedEntry(
 ): { coefficients: Coefficients; allocation: Allocation } {
   const coefficients = memo.coefficients
   const allocation = memo.schema === 'metalog.entry.v1'
-    ? allocatePositions(coefficients, market.ranges, memo.count)
-    : allocateManualPositions(coefficients, market.ranges, memo.quantities as number[])
+    ? allocatePositions(coefficients, market.ranges, memo.count, MAX_RECORDED_POSITIONS)
+    : allocateManualPositions(coefficients, market.ranges, memo.quantities as number[], MAX_RECORDED_POSITIONS)
   if (memo.count !== allocation.count) throw new Error('The recorded position total does not match the NFT counts.')
   const tierIds = expandedTierIds(allocation)
   if (amount !== BigInt(market.definition.unitPriceWei) * BigInt(allocation.count)) {
