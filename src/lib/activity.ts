@@ -19,7 +19,8 @@ export type ActivityPage = {
   complete: boolean
   nextCursor: string | null
 }
-const MAX_REQUESTS = 4
+// 16 windows of 500 blocks: about nine hours of Base per page.
+const MAX_REQUESTS = 16
 
 type Transfer = { from: Address; to: Address; tokenId: bigint }
 

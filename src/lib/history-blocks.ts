@@ -4,8 +4,14 @@ import type { MarketSnapshot } from './defifa'
 
 export const MAX_LOG_BLOCKS = 500n
 
+// ponytail: per-process memo, cleared whole when large; a shared cache if instances multiply.
+const found = new Map<string, bigint>()
+
 /** Bounded search near the game, avoiding unrelated ancient RPC reads. */
 export async function firstBlockAtTimestamp(client: PublicClient, market: MarketSnapshot, timestamp: number): Promise<bigint> {
+  const key = `${market.chainId}:${timestamp}`
+  const known = found.get(key)
+  if (known !== undefined && known <= BigInt(market.blockNumber)) return known
   const floor = BigInt(deploymentForChain(market.chainId).deployerBlock)
   let high = BigInt(market.blockNumber)
   if (floor > high) throw new Error('The requested snapshot precedes the configured Defifa deployment.')
@@ -30,5 +36,10 @@ export async function firstBlockAtTimestamp(client: PublicClient, market: Market
     else high = middle
   }
   if (low !== high) throw new Error('The history range could not be resolved within its read limit.')
+  // Only an answer below the snapshot head is final; at the head, the block may not exist yet.
+  if (low < BigInt(market.blockNumber)) {
+    if (found.size > 1_000) found.clear()
+    found.set(key, low)
+  }
   return low
 }

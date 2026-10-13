@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { positionDensities } from '@/domain/allocation'
-import { densityBuckets, type Coefficients } from '@/domain/distribution'
+import { cdf, densityBuckets, type Coefficients } from '@/domain/distribution'
 import { binForOutcome, curveFromPositions, formatPercentage, rangeEdges, shareAtOrAbove, smoothShareAtOrAbove, type RangeBin } from '@/domain/ranges'
 
 const LEFT = 8, RIGHT = 8, TOP = 24, BOTTOM = 51, TAIL_GAP = 10, TAIL_SHARE = .5
@@ -80,14 +80,22 @@ export function PositionChart({ ranges, quantities, coefficients, crowd, payout,
   const tails = mineShown.filter(position => position.density === null).map(position => ({ position, side: sideOf(position.range), density: columnDensity(position.range, position.share) }))
   const overflow = ranges.filter(range => range.lower === null || range.upper === null)
   const hasLow = overflow.some(range => sideOf(range) === 'low'), hasHigh = overflow.some(range => sideOf(range) === 'high')
-  // The resulting curve: the same fit through the positions after your order mints alongside the crowd's.
-  const combined = useMemo(() => crowd && mine && positions?.some(position => position.quantity > 0)
-    ? crowd.map((count, index) => count + (positions[index]?.quantity ?? 0)) : null, [crowd, mine, positions])
-  const resultFit = useMemo(() => combined ? curveFromPositions(ranges, combined) : null, [ranges, combined])
+  // The resulting curve: the crowd curve and yours, mixed by how many positions each holds.
+  const yourCount = mine ? positions?.reduce((sum, position) => sum + position.quantity, 0) ?? 0 : 0
+  const crowdCount = crowd?.reduce((sum, count) => sum + count, 0) ?? 0
+  const combined = useMemo(() => crowd && yourCount > 0 ? crowd.map((count, index) => count + (positions?.[index]?.quantity ?? 0)) : null, [crowd, yourCount, positions])
+  const resultCdf = useMemo(() => crowdFit && yourCount > 0
+    ? (value: number) => (crowdCount * cdf(crowdFit, value) + yourCount * cdf(coefficients, value)) / (crowdCount + yourCount) : null,
+  [crowdFit, crowdCount, yourCount, coefficients])
   const resultLine = useMemo(() => {
-    try { return crowdLine && resultFit ? densityBuckets(resultFit, 300, { low, high }) : null }
-    catch { return null }
-  }, [crowdLine, resultFit, low, high])
+    try {
+      if (!crowdLine || !resultCdf) return null
+      const yours = densityBuckets(coefficients, 300, { low, high }).buckets
+      const buckets = crowdLine.buckets.map((bucket, index) => ({ ...bucket,
+        density: (crowdCount * bucket.density + yourCount * yours[index].density) / (crowdCount + yourCount) }))
+      return { buckets, peak: Math.max(...buckets.map(bucket => bucket.density)) }
+    } catch { return null }
+  }, [crowdLine, resultCdf, coefficients, crowdCount, yourCount, low, high])
   const peak = Math.max(mine ? density?.peak ?? 0 : 0, ...mineShown.map(position => columnDensity(position.range, position.share)),
     ...crowdAll.map(position => columnDensity(position.range, position.share)),
     ...(payout ?? []).map((share, index) => columnDensity(ranges[index], share)), crowdLine?.peak ?? 0, resultLine?.peak ?? 0) || 1
@@ -154,13 +162,13 @@ export function PositionChart({ ranges, quantities, coefficients, crowd, payout,
   // The crowd answers, then your order or the book moves the answer; without a crowd your order answers alone.
   const crowdShares = crowdAll.length ? crowdAll.map(position => position.share) : null
   // The crowd's curve after your order joins it: crowd and your curve blended by positions, on the crowd curve's grid.
-  const smoothAbove = (counts: readonly number[] | null | undefined, fit: Coefficients | null) => {
+  const smoothAbove = (counts: readonly number[] | null | undefined, fit: ((value: number) => number) | null) => {
     if (!counts || !fit || edge === null) return null
     const above = smoothShareAtOrAbove(ranges, counts, fit, edge)
     return below ? 1 - above : above
   }
-  const answer = smooth ? smoothAbove(crowd, crowdFit) : asked(crowdShares ?? mineShown.map(position => position.share))
-  const moved = crowdShares && yourTotal > 0 ? { value: smooth ? smoothAbove(combined, resultFit) : asked(crowdAll.map((position, index) => position.quantity + (mineShown[index]?.quantity ?? 0))), by: 'with your order' }
+  const answer = smooth ? smoothAbove(crowd, crowdFit && (value => cdf(crowdFit, value))) : asked(crowdShares ?? mineShown.map(position => position.share))
+  const moved = crowdShares && yourTotal > 0 ? { value: smooth ? smoothAbove(combined, resultCdf) : asked(crowdAll.map((position, index) => position.quantity + (mineShown[index]?.quantity ?? 0))), by: 'with your order' }
     : crowdShares && bookOdds ? { value: asked(bookOdds), by: 'on the book' } : null
   const crowdShare = (tierId: number) => crowdAll.find(position => position.range.tierId === tierId)?.share
   return <>

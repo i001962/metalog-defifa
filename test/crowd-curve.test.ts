@@ -13,9 +13,9 @@ describe('crowd curve from positions', () => {
     const counts = [3, 11, 24, 21, 14, 10, 17]
     const curve = curveFromPositions(ranges, counts)!
     expect(curve).not.toBeNull()
-    for (const edge of rangeEdges(ranges)) expect(smoothShareAtOrAbove(ranges, counts, curve, edge)).toBeCloseTo(shareAtOrAbove(ranges, counts, edge) / 100, 12)
+    for (const edge of rangeEdges(ranges)) expect(smoothShareAtOrAbove(ranges, counts, value => cdf(curve, value), edge)).toBeCloseTo(shareAtOrAbove(ranges, counts, edge) / 100, 12)
     // Between edges the answer moves smoothly and stays between its neighbors.
-    const between = smoothShareAtOrAbove(ranges, counts, curve, 0)
+    const between = smoothShareAtOrAbove(ranges, counts, value => cdf(curve, value), 0)
     expect(between).toBeLessThan(shareAtOrAbove(ranges, counts, -.5) / 100)
     expect(between).toBeGreaterThan(shareAtOrAbove(ranges, counts, .5) / 100)
     expect(cdf(curve, 0)).toBeGreaterThan(0)

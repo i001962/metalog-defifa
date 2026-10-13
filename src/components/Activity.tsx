@@ -51,7 +51,7 @@ export function Activity({ market, active }: { market: MarketSnapshot; active: b
       {events.map(event => <ActivityRow key={`${event.transactionHash}:${event.kind}`} event={event} market={market} explorer={explorer} />)}
     </ol>
     <div ref={end} />
-    {active && isFetching && <p className="hint" role="status">Reading activity…</p>}
+    {active && isFetching && !events.length && <p className="hint" role="status">Reading activity…</p>}
     {query.data && !events.length && !query.hasNextPage && <p className="hint">No entries or exits yet.</p>}
   </section>
 }

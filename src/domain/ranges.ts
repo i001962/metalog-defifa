@@ -241,14 +241,14 @@ export function curveFromPositions(ranges: readonly RangeBin[], counts: readonly
   return fitMetalog(edges.map((value, index) => ({ p: p[index], value, weight: (slope(index - 1) + slope(index)) / 2 })))
 }
 
-/** Share at or above any value: exact at range edges, spread within a range by the fitted curve's shape. */
-export function smoothShareAtOrAbove(ranges: readonly RangeBin[], counts: readonly number[], curve: Coefficients, outcome: number): number {
+/** Share at or above any value: exact at range edges, spread within a range by a smooth curve's shape (a CDF). */
+export function smoothShareAtOrAbove(ranges: readonly RangeBin[], counts: readonly number[], curve: (value: number) => number, outcome: number): number {
   const total = counts.reduce((sum, count) => sum + count, 0)
   if (!(total > 0)) return 0
   const bin = binForOutcome(ranges, outcome)
   const lower = bin.lower ?? -Infinity, upper = bin.upper ?? Infinity
-  const atLower = cdf(curve, lower), atUpper = cdf(curve, upper)
-  const inside = atUpper - atLower > 1e-12 ? (atUpper - cdf(curve, outcome)) / (atUpper - atLower)
+  const atLower = curve(lower), atUpper = curve(upper)
+  const inside = atUpper - atLower > 1e-12 ? (atUpper - curve(outcome)) / (atUpper - atLower)
     : Number.isFinite(lower) && Number.isFinite(upper) ? (upper - outcome) / (upper - lower) : 0.5
   return (shareAtOrAbove(ranges, counts, upper) + counts[ranges.indexOf(bin)] * inside) / total
 }
