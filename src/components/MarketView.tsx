@@ -79,7 +79,7 @@ export function MarketView({ chainId, projectId }: { chainId: number; projectId:
       <StageLamps market={market} />
       <div className="market-title">
         <div><h1>{market.definition.prompt}</h1>
-          <p className="market-meta"><span>Game {market.projectId}</span><ChainIcon chainId={chainId} /></p></div>
+          <p className="market-meta"><ChainIcon chainId={chainId} /><span>Game {market.projectId}</span></p></div>
         <p className="pot"><strong>{formatEther(BigInt(market.potWei))}</strong><span>ETH pot, {distribution.totalSupply} positions</span></p>
       </div>
     </header>
