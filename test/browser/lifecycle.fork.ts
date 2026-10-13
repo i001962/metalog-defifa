@@ -109,8 +109,8 @@ test('the built website creates, enters, refunds, transfers, settles and claims 
     const afterRefund = await snapshot()
     expect(afterRefund.market.potWei).toBe('500000000000000')
 
-    await nfts().getByRole('checkbox', { name: 'Select NFT #3000000002', exact: true }).check()
-    await nfts().getByText('Transfer an NFT', { exact: true }).click()
+    await nfts().getByLabel('Actions for NFT #3000000002', { exact: true }).click()
+    await nfts().getByRole('menuitem', { name: 'Transfer', exact: true }).click()
     await page.getByLabel('Transfer recipient', { exact: true }).fill(fork.accounts[1])
     await transact(nfts().getByRole('button', { name: 'Review transfer', exact: true }), 'Transfer position')
     await expect(nfts().getByText(/^4 owned \| 4 shown/)).toBeVisible()

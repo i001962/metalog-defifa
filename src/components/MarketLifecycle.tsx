@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { Fragment, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { formatEther, formatUnits, getAddress, isAddress } from 'viem'
 import { MAX_POSITIONS } from '@/domain/allocation'
@@ -30,6 +30,8 @@ export function MarketLifecycle({ lifecycle, panel, current, loading, error, onR
   const [selections, setSelections] = useState<Record<string, Record<string, number>>>({})
   const [recipient, setRecipient] = useState('')
   const [delegatee, setDelegatee] = useState('')
+  // One NFT's menu action open inline beneath its row.
+  const [rowAction, setRowAction] = useState<{ tokenId: string; kind: 'menu' | 'transfer' | 'delegate' } | null>(null)
   const [percentages, setPercentages] = useState(() => market.ranges.map(() => '0'))
   const [resultView, setResultView] = useState<'weighted' | 'one-range'>('weighted')
   const [scoreTouched, setScoreTouched] = useState(false)
@@ -38,7 +40,6 @@ export function MarketLifecycle({ lifecycle, panel, current, loading, error, onR
   const walletKey = address?.toLowerCase() ?? ''
   const selected = selections[walletKey] ?? {}
   const tokenIds = Object.keys(selected).sort((a, b) => BigInt(a) < BigInt(b) ? -1 : 1)
-  const tierIds = [...new Set(Object.values(selected))].sort((a, b) => a - b)
   const matchingWallet = !!address && lifecycle.account?.toLowerCase() === walletKey
   const busy = preparing || transactions.busy || transactions.hasPendingForMarket(market)
   const canAct = current && matchingWallet && !isSigna && !busy
@@ -89,6 +90,7 @@ export function MarketLifecycle({ lifecycle, panel, current, loading, error, onR
       const prepared = await prepareLifecycleAction(market, action, address)
       const receipt = await transactions.executeMarket(prepared, market)
       if (receipt) {
+        setRowAction(null)
         const removed = action.kind === 'transfer' ? [action.tokenId] : action.kind === 'cash-out' ? action.tokenIds : []
         if (removed.length) setSelections(previous => {
           const next = { ...(previous[walletKey] ?? {}) }
@@ -114,12 +116,41 @@ export function MarketLifecycle({ lifecycle, panel, current, loading, error, onR
             <p className="hint">{inventory.totalOwned} owned | {inventory.tokens.length} shown | block {market.blockNumber}</p>
             {!inventory.complete && <p className="hint">This is a partial inventory. Load more to check the remaining positions.</p>}
             {inventory.tokens.length === 0 ? <p>{inventory.complete && inventory.totalOwned === '0' ? 'You do not own any NFTs in this game.' : 'No owned NFTs on this page.'}</p>
-              : <div className="table-wrap"><table className="inventory-table"><thead><tr><th>Select</th><th>NFT</th><th>Range</th></tr></thead><tbody>
-                {inventory.tokens.map(token => <tr key={token.tokenId}>
+              : <div className="table-wrap"><table className="inventory-table"><thead><tr><th>Select</th><th>NFT</th><th>Range</th><th><span className="sr-only">Actions</span></th></tr></thead><tbody>
+                {inventory.tokens.map(token => <Fragment key={token.tokenId}><tr>
                   <td><input type="checkbox" aria-label={`Select NFT #${token.tokenId}`} checked={!!selected[token.tokenId]}
                     disabled={!current || busy || (!selected[token.tokenId] && tokenIds.length >= MAX_POSITIONS)} onChange={event => changeSelection(token.tokenId, token.tierId, event.target.checked)} /></td>
                   <td>#{token.tokenId}</td><td>{market.ranges.find(range => range.tierId === token.tierId)?.label}</td>
-                </tr>)}
+                  <td className="row-menu-cell"><button type="button" className="row-menu" aria-label={`Actions for NFT #${token.tokenId}`}
+                    aria-expanded={rowAction?.tokenId === token.tokenId}
+                    onClick={() => setRowAction(rowAction?.tokenId === token.tokenId ? null : { tokenId: token.tokenId, kind: 'menu' })}>⋯</button></td>
+                </tr>
+                {rowAction?.tokenId === token.tokenId && <tr className="row-action"><td colSpan={4}>
+                  {rowAction.kind === 'menu' ? <div role="menu" aria-label={`Actions for NFT #${token.tokenId}`} className="actions">
+                    <button type="button" role="menuitem" onClick={() => { setRowAction({ tokenId: token.tokenId, kind: 'transfer' }); setRecipient('') }}>Transfer</button>
+                    <button type="button" role="menuitem" onClick={() => setRowAction({ tokenId: token.tokenId, kind: 'delegate' })}>Delegate votes</button>
+                  </div> : rowAction.kind === 'transfer' ? <>
+                    <p className="hint">Ownership and payout rights of NFT #{token.tokenId} move to the recipient.</p>
+                    <label className="field"><span>Transfer recipient</span><input value={recipient} spellCheck={false} autoComplete="off" placeholder="0x…" onChange={event => setRecipient(event.target.value)} /></label>
+                    <div className="actions">
+                      <button type="button" disabled={!canAct || !isAddress(recipient)}
+                        onClick={() => void act({ kind: 'transfer', tokenId: token.tokenId, to: getAddress(recipient) })}>Review transfer</button>
+                      <button type="button" onClick={() => setRowAction(null)}>Cancel</button>
+                    </div>
+                  </> : <>
+                    <p className="hint">Delegation applies to every NFT you hold in {market.ranges.find(range => range.tierId === token.tierId)?.label}.
+                      {!lifecycle.canDelegate && ' It can change only while entry is open.'}</p>
+                    {lifecycle.delegates.some(item => item.tierId === token.tierId) && <p className="hint">Current delegate <code>{lifecycle.delegates.find(item => item.tierId === token.tierId)!.delegate}</code></p>}
+                    <label className="field"><span>Voting delegate</span><input value={delegatee} spellCheck={false} autoComplete="off" placeholder="0x…" onChange={event => setDelegatee(event.target.value)} /></label>
+                    <div className="actions">
+                      {address && <button type="button" onClick={() => setDelegatee(address)}>Use my wallet</button>}
+                      <button type="button" disabled={!canAct || !lifecycle.canDelegate || !isAddress(delegatee)}
+                        onClick={() => void act({ kind: 'delegate', tierIds: [token.tierId], delegatee: getAddress(delegatee) })}>Review delegation</button>
+                      <button type="button" onClick={() => setRowAction(null)}>Cancel</button>
+                    </div>
+                  </>}
+                </td></tr>}
+                </Fragment>)}
               </tbody></table></div>}
             <div className="actions">
               <span className="hint">{tokenIds.length} / {MAX_POSITIONS} selected</span>
@@ -130,12 +161,6 @@ export function MarketLifecycle({ lifecycle, panel, current, loading, error, onR
             </div>
           </>}
       {isSigna && <p className="hint">Use an external wallet for game transactions. <button type="button" onClick={() => connect({ externalOnly: true })}>Use external wallet</button></p>}
-      <details><summary>Transfer an NFT</summary>
-        <p className="hint">Select one NFT. Its ownership and payout rights move to the recipient.</p>
-        <label className="field"><span>Transfer recipient</span><input value={recipient} spellCheck={false} autoComplete="off" placeholder="0x…" onChange={event => setRecipient(event.target.value)} /></label>
-        <button type="button" disabled={!canAct || tokenIds.length !== 1 || !isAddress(recipient)}
-          onClick={() => void act({ kind: 'transfer', tokenId: tokenIds[0], to: getAddress(recipient) })}>Review transfer</button>
-      </details>
       {lifecycle.cashOutMode && <div className="section">
         <h3>{cashOutLabel}</h3>
         <p className="hint">Select the NFTs to burn. {lifecycle.cashOutMode === 'cash-out' ? 'The ratified result determines their payout.' : 'Refunding returns their available value.'}</p>
@@ -153,19 +178,6 @@ export function MarketLifecycle({ lifecycle, panel, current, loading, error, onR
         <div className="actions"><button type="button" disabled={!canAct || !quoteReady || !quote.data || tokenIds.length === 0 || tokenIds.length > MAX_POSITIONS}
           onClick={() => quote.data && void act({ kind: 'cash-out', tokenIds, minReclaimedWei: quote.data.reclaimWei })}>Review {cashOutLabel.toLowerCase()}</button></div>
       </div>}
-      <details><summary>Voting delegation</summary>
-        <p className="hint">Select NFTs above to choose ranges. Delegation applies to every NFT you hold in those ranges.</p>
-        {!lifecycle.canDelegate && <p className="hint">Delegation can change only while entry is open.</p>}
-        <label className="field"><span>Voting delegate</span><input value={delegatee} spellCheck={false} autoComplete="off" placeholder="0x…" onChange={event => setDelegatee(event.target.value)} /></label>
-        <div className="actions">
-          {address && <button type="button" onClick={() => setDelegatee(address)}>Use my wallet</button>}
-          <button type="button" disabled={!canAct || !lifecycle.canDelegate || tierIds.length === 0 || !isAddress(delegatee)}
-            onClick={() => void act({ kind: 'delegate', tierIds, delegatee: getAddress(delegatee) })}>Review delegation</button>
-        </div>
-        {matchingWallet && lifecycle.delegates.length > 0 && <div className="table-wrap"><table><thead><tr><th>Range</th><th>Delegate</th></tr></thead><tbody>
-          {lifecycle.delegates.map(item => <tr key={item.tierId}><td>{market.ranges.find(range => range.tierId === item.tierId)?.label}</td><td><code>{item.delegate}</code></td></tr>)}
-        </tbody></table></div>}
-      </details>
     </section>
     <section role="tabpanel" id="panel-results" aria-labelledby="scorecards" hidden={panel !== 'results'}>
       <h2 id="scorecards">Results</h2>

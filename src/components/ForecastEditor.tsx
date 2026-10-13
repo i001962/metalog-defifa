@@ -138,6 +138,7 @@ export function ForecastEditor({ definition, market, current = true, onSubmitted
     <div className="forecast-side">
     <div className="ticket" hidden={browsing}>
       <h2 id="your-view">Your view</h2>
+      <p className="hint">{manual ? 'Click a range in the graph, or set counts below' : 'Drag the curve in the graph, or set values below'}</p>
       <div className="forecast-controls">
         <div className="mode-toggle" role="group" aria-label="Curve controls">
           <button type="button" aria-pressed={mode === 'moments'} onClick={() => selectMode('moments')}>Simple</button>

@@ -110,6 +110,9 @@ export function PositionChart({ ranges, quantities, coefficients, crowd, payout,
     onChange(original.map((value, index) => index === 0 ? value + shift : value * scale) as unknown as Coefficients)
   }
 
+  const crowdTotal = crowdAll.reduce((sum, position) => sum + position.quantity, 0)
+  const yourTotal = mineShown.reduce((sum, position) => sum + position.quantity, 0)
+  const percent = (share: number) => share > 0 && share < .01 ? '<1%' : `${Math.round(share * 100)}%`
   const crowdShare = (tierId: number) => crowdAll.find(position => position.range.tierId === tierId)?.share
   return <>
     <div className="chart-frame">
@@ -178,9 +181,21 @@ export function PositionChart({ ranges, quantities, coefficients, crowd, payout,
           tabIndex={0} aria-label={describe(position)} onFocus={() => { setSelectedTier(position.range.tierId); setCallout(true) }}>
         </polygon>
       })}
-      {crowdAll.map((position, index) => position.quantity > 0 && <text key={`chance-${position.range.tierId}`} className="chart-chance"
-        x={barCenter(position)} y={axis - tallest(position.range, index) / peak * plotHeight - 6} textAnchor="middle">
-        {position.share < .01 ? '<1%' : `${Math.round(position.share * 100)}%`}</text>)}
+      {crowdAll.map((position, index) => {
+        const yours = mineShown[index]?.quantity ?? 0
+        if (position.quantity === 0 && yours === 0) return null
+        const { range } = position, side = range.lower === null ? 'start' : range.upper === null ? 'end' : 'middle'
+        // Above the bar and the curve, and pinned inside the chart at the overflow edges.
+        const curveTop = mine && range.lower !== null && range.upper !== null
+          ? Math.max(0, ...(density?.buckets.filter(bucket => bucket.upper > range.lower! && bucket.lower < range.upper!).map(bucket => bucket.density) ?? [])) : 0
+        return <text key={`chance-${range.tierId}`} className="chart-chance" textAnchor={side}
+          x={side === 'start' ? column(range).left : side === 'end' ? column(range).right : barCenter(position)}
+          y={axis - Math.max(tallest(range, index), curveTop) / peak * plotHeight - 6}>
+          {percent(position.share)}
+          {/* The crowd's share once your order mints alongside it. */}
+          {yourTotal > 0 && <tspan className="chart-chance-after">{` → ${percent((position.quantity + yours) / (crowdTotal + yourTotal))}`}</tspan>}
+        </text>
+      })}
       {overflow.map(range => <text key={`label-${range.tierId}`} x={tailX(sideOf(range)) + TAIL / 2} y={HEIGHT - 28} textAnchor="middle">
         {sideOf(range) === 'low' ? '<' : '≥'}</text>)}
       {mine && <path d={line} className="chart-curve" pointerEvents="none" />}
@@ -191,6 +206,8 @@ export function PositionChart({ ranges, quantities, coefficients, crowd, payout,
       </text>)}
       <text x={plotLeft + plotWidth / 2} y={HEIGHT - 6} textAnchor="middle">Outcome (%)</text>
     </svg>
+    {/* The editing hint lives beside the controls; chart states overlay the chart so edits never shift the page. */}
+    {mine && (submitted || readOnly) && <p className="hint chart-note">{instruction}</p>}
     {callout && selected && <div className="chart-callout" aria-hidden="true" style={{
       left: `${Math.min(88, Math.max(12, barCenter(selected) / width * 100))}%`,
       top: `${Math.max(0, barTop(selected) / HEIGHT * 100)}%`,
@@ -216,6 +233,5 @@ export function PositionChart({ ranges, quantities, coefficients, crowd, payout,
       {basis?.filter(position => position.density === null).map(position => <span key={position.range.tierId}>{describe(position)}</span>)}
     </div>
     {!density && <p className="hint" role="status">The curve cannot be displayed at this precision.</p>}
-    {mine && <p className="hint" style={{ minHeight: '3em' }}>{instruction}</p>}
   </>
 }

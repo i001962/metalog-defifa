@@ -112,8 +112,6 @@ export function MarketView({ chainId, projectId }: { chainId: number; projectId:
       <ForecastEditor key={`${chainId}:${projectId}`} definition={market.definition} market={market} current={current} onSubmitted={refresh}
         crowd={supplies} payout={data.ratifiedPayoutShares}
         below={<>
-          {lifecycle.cashOutMode && <div className="actions"><button type="button" className="primary" onClick={() => setTab('nfts')}>
-            {lifecycle.cashOutMode === 'cash-out' ? 'Claim payout' : 'Refund'} with your NFTs</button></div>}
           {/* The chart carries each range's share; the data stays one click away. */}
           <p className="data-links">Data <span className="pip" aria-hidden="true">|</span>
             <a href={`/api/markets/${chainId}/${projectId}`}>JSON</a><span className="pip" aria-hidden="true">|</span>
