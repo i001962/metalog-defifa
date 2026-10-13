@@ -121,10 +121,10 @@ export function MarketView({ chainId, projectId }: { chainId: number; projectId:
         below={<>
           {inPlay && <OrderBook market={market} books={book?.books ?? null} sample={!!book?.sample} owned={mine} />}
           {/* The chart carries each range's share; the data stays one click away. */}
-          <p className="data-links">Data <span className="pip" aria-hidden="true">|</span>
+          <p className="data-links">Export <span className="pip" aria-hidden="true">|</span>
             <a href={`/api/markets/${chainId}/${projectId}`}>JSON</a><span className="pip" aria-hidden="true">|</span>
             <a href={`/api/markets/${chainId}/${projectId}?format=sipmath`}>SIPmath</a><span className="pip" aria-hidden="true">|</span>
-            <a href={`${chainForId(chainId).blockExplorers.default.url}/address/${market.hook}`} target="_blank" rel="noreferrer">Contract</a></p>
+            <a href={`${chainForId(chainId).blockExplorers.default.url}/address/${market.hook}`} target="_blank" rel="noreferrer">View contract</a></p>
           <Activity market={market} active={shown === 'market'} />
         </>} />
     </div>
