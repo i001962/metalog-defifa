@@ -74,11 +74,11 @@ export function ForecastEditor({ definition, market, current = true, onSubmitted
     if (!manual) return automatic
     try {
       if (!curve.coefficients) throw new Error(curve.error || 'Check your curve.')
-      if (!manualCounts) throw new Error('Enter a whole NFT count of zero or more for every range.')
+      if (!manualCounts) throw new Error('Enter a whole position count of zero or more for every range.')
       const preview = forecastPreview({ market: definition, coefficients: curve.coefficients, quantities: manualCounts })
       return { preview, payment: { valueWei: BigInt(preview.payment.valueWei), remainderWei: 0n }, error: null }
     } catch (cause) {
-      return { preview: null, payment: null, error: cause instanceof Error ? cause.message : 'Check your NFT counts.' }
+      return { preview: null, payment: null, error: cause instanceof Error ? cause.message : 'Check your position counts.' }
     }
   }, [manual, manualCounts, automatic, curve, definition])
   // Retained evidence is display-only. Submission and export always use the current model.
@@ -168,10 +168,10 @@ export function ForecastEditor({ definition, market, current = true, onSubmitted
             }} />
         </label>)}</div>
         <p className="hint">Values in percentage points. Shape terms work together.</p>
-      </> : <div className="table-wrap positions-table range-editor" role="region" aria-label="NFT counts" tabIndex={0}>
+      </> : <div className="table-wrap positions-table range-editor" role="region" aria-label="Position counts" tabIndex={0}>
         <table><tbody>
           {ranges.map((range, index) => <tr key={range.tierId}><td>{range.label}</td><td>
-            <input className="quantity-input" data-tier={range.tierId} aria-label={`NFTs for ${range.label}`} inputMode="numeric"
+            <input className="quantity-input" data-tier={range.tierId} aria-label={`Positions for ${range.label}`} inputMode="numeric"
               aria-invalid={model.error !== null} aria-describedby={model.error ? 'forecast-error' : undefined}
               value={quantities?.[index] ?? ''} onChange={event => {
                 const updated = [...(quantities ?? ranges.map(() => '0'))]
@@ -191,7 +191,7 @@ export function ForecastEditor({ definition, market, current = true, onSubmitted
       </div>
       {tablePreview && <div className="positions" role="region" aria-label="Positions">
         <h3>Your order, {tablePreview.allocation.count} positions{!model.preview && <small> | Last valid preview</small>}</h3>
-        <table aria-label="Your order"><thead><tr><th>Range</th><th>{manual ? 'Reference' : 'Curve'}</th><th>NFTs</th></tr></thead><tbody>
+        <table aria-label="Your order"><thead><tr><th>Range</th><th>{manual ? 'Reference' : 'Curve'}</th><th>Positions</th></tr></thead><tbody>
           {tablePreview.ranges.map((range, index) => tablePreview.allocation.quantities[index] > 0 && <tr key={range.tierId}>
             <td>{range.label}</td><td>{(tablePreview.allocation.probabilities[index] * 100).toFixed(1)}%</td><td>{tablePreview.allocation.quantities[index]}</td>
           </tr>)}

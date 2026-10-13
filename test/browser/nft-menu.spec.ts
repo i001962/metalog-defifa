@@ -18,7 +18,7 @@ const snapshot: LifecycleSnapshot = {
   noContestAfter: now + 1000000, canSubmitScorecard: false, canDelegate: true, canFulfill: false, canTriggerNoContest: false, cashOutMode: 'refund',
 }
 
-test('transfer and delegation open from each NFT menu, inline under that NFT', async ({ page }) => {
+test('transfer and delegation open from each position menu, inline under that position', async ({ page }) => {
   await page.addInitScript(account => {
     const provider = {
       on() { return provider }, removeListener() { return provider },
@@ -39,14 +39,14 @@ test('transfer and delegation open from each NFT menu, inline under that NFT', a
   await page.getByRole('button', { name: 'Connect', exact: true }).click()
   await page.getByRole('button', { name: 'Injected', exact: true }).click()
   await page.getByRole('tab', { name: /^Your position/ }).click()
-  await expect(page.getByText('Transfer an NFT', { exact: true })).toHaveCount(0)
+  await expect(page.getByText('Transfer an position', { exact: true })).toHaveCount(0)
   await expect(page.getByText('Voting delegation', { exact: true })).toHaveCount(0)
 
-  await page.getByLabel('Actions for NFT #1000000001', { exact: true }).click()
+  await page.getByLabel('Actions for position #1000000001', { exact: true }).click()
   await page.getByRole('menuitem', { name: 'Transfer', exact: true }).click()
   await expect(page.getByRole('menu')).toBeHidden()
   const recipient = page.getByLabel('Transfer recipient', { exact: true })
-  await expect(page.getByText('Ownership and payout rights of NFT #1000000001', { exact: false })).toBeVisible()
+  await expect(page.getByText('Ownership and payout rights of position #1000000001', { exact: false })).toBeVisible()
   const review = page.getByRole('button', { name: 'Review transfer', exact: true })
   await expect(review).toBeDisabled()
   await recipient.fill(delegate)
@@ -54,7 +54,7 @@ test('transfer and delegation open from each NFT menu, inline under that NFT', a
   await page.getByRole('button', { name: 'Cancel', exact: true }).click()
   await expect(recipient).toHaveCount(0)
 
-  await page.getByLabel('Actions for NFT #2000000001', { exact: true }).click()
+  await page.getByLabel('Actions for position #2000000001', { exact: true }).click()
   await page.getByRole('menuitem', { name: 'Delegate votes', exact: true }).click()
   await expect(page.getByText(delegate, { exact: true })).toBeVisible()
   const delegation = page.getByRole('button', { name: 'Review delegation', exact: true })

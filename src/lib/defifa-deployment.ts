@@ -17,7 +17,7 @@ export type Deployment = {
   hookGetters: Record<string, string>
 }
 
-// Native Defifa NFT IDs encode tier × multiplier + serial.
+// Native Defifa position IDs encode tier × multiplier + serial.
 export const TOKEN_MULTIPLIER = 1_000_000_000n
 
 export const DEFIFA_ABI = abi as Record<keyof typeof abi, Abi>

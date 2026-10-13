@@ -30,7 +30,7 @@ export function MarketLifecycle({ lifecycle, panel, current, loading, error, onR
   const [selections, setSelections] = useState<Record<string, Record<string, number>>>({})
   const [recipient, setRecipient] = useState('')
   const [delegatee, setDelegatee] = useState('')
-  // One NFT's menu action open inline beneath its row.
+  // One position's menu action open inline beneath its row.
   const [rowAction, setRowAction] = useState<{ tokenId: string; kind: 'menu' | 'transfer' | 'delegate' } | null>(null)
   const [percentages, setPercentages] = useState(() => market.ranges.map(() => '0'))
   const [resultView, setResultView] = useState<'weighted' | 'one-range'>('weighted')
@@ -105,32 +105,32 @@ export function MarketLifecycle({ lifecycle, panel, current, loading, error, onR
 
   return <>
     <section role="tabpanel" id="panel-nfts" aria-labelledby="your-nfts" hidden={panel !== 'nfts'}>
-      <div className="row"><h2 id="your-nfts">Your NFTs</h2><button type="button" disabled={loading || busy} onClick={onRefresh}>Refresh</button></div>
+      <div className="row"><h2 id="your-nfts">Your positions</h2><button type="button" disabled={loading || busy} onClick={onRefresh}>Refresh</button></div>
       {loading && <p className="hint" role="status">Updating market and wallet positions…</p>}
       {error && <p className="error" role="alert">{error} Showing the last available market data. Refresh to enable actions.</p>}
       {preparing && <p role="status">Preparing transaction…</p>}
       {actionError && <p className="error" role="alert">{actionError}</p>}
-      {!address ? <button type="button" onClick={() => connect()}>Connect to view your NFTs</button>
+      {!address ? <button type="button" onClick={() => connect()}>Connect to view your positions</button>
         : !matchingWallet ? <p role="status">{error ? 'Positions for this wallet are unavailable.' : 'Loading positions for this wallet…'}</p>
           : <>
             <p className="hint">{inventory.totalOwned} owned | {inventory.tokens.length} shown | block {market.blockNumber}</p>
             {!inventory.complete && <p className="hint">This is a partial inventory. Load more to check the remaining positions.</p>}
-            {inventory.tokens.length === 0 ? <p>{inventory.complete && inventory.totalOwned === '0' ? 'You do not own any NFTs in this game.' : 'No owned NFTs on this page.'}</p>
-              : <div className="table-wrap"><table className="inventory-table"><thead><tr><th>Select</th><th>NFT</th><th>Range</th><th><span className="sr-only">Actions</span></th></tr></thead><tbody>
+            {inventory.tokens.length === 0 ? <p>{inventory.complete && inventory.totalOwned === '0' ? 'You do not own any positions in this game.' : 'No owned positions on this page.'}</p>
+              : <div className="table-wrap"><table className="inventory-table"><thead><tr><th>Select</th><th>Position</th><th>Range</th><th><span className="sr-only">Actions</span></th></tr></thead><tbody>
                 {inventory.tokens.map(token => <Fragment key={token.tokenId}><tr>
-                  <td><input type="checkbox" aria-label={`Select NFT #${token.tokenId}`} checked={!!selected[token.tokenId]}
+                  <td><input type="checkbox" aria-label={`Select position #${token.tokenId}`} checked={!!selected[token.tokenId]}
                     disabled={!current || busy || (!selected[token.tokenId] && tokenIds.length >= MAX_POSITIONS)} onChange={event => changeSelection(token.tokenId, token.tierId, event.target.checked)} /></td>
                   <td>#{token.tokenId}</td><td>{market.ranges.find(range => range.tierId === token.tierId)?.label}</td>
-                  <td className="row-menu-cell"><button type="button" className="row-menu" aria-label={`Actions for NFT #${token.tokenId}`}
+                  <td className="row-menu-cell"><button type="button" className="row-menu" aria-label={`Actions for position #${token.tokenId}`}
                     aria-expanded={rowAction?.tokenId === token.tokenId}
                     onClick={() => setRowAction(rowAction?.tokenId === token.tokenId ? null : { tokenId: token.tokenId, kind: 'menu' })}>⋯</button></td>
                 </tr>
                 {rowAction?.tokenId === token.tokenId && <tr className="row-action"><td colSpan={4}>
-                  {rowAction.kind === 'menu' ? <div role="menu" aria-label={`Actions for NFT #${token.tokenId}`} className="actions">
+                  {rowAction.kind === 'menu' ? <div role="menu" aria-label={`Actions for position #${token.tokenId}`} className="actions">
                     <button type="button" role="menuitem" onClick={() => { setRowAction({ tokenId: token.tokenId, kind: 'transfer' }); setRecipient('') }}>Transfer</button>
                     <button type="button" role="menuitem" onClick={() => setRowAction({ tokenId: token.tokenId, kind: 'delegate' })}>Delegate votes</button>
                   </div> : rowAction.kind === 'transfer' ? <>
-                    <p className="hint">Ownership and payout rights of NFT #{token.tokenId} move to the recipient.</p>
+                    <p className="hint">Ownership and payout rights of position #{token.tokenId} move to the recipient.</p>
                     <label className="field"><span>Transfer recipient</span><input value={recipient} spellCheck={false} autoComplete="off" placeholder="0x…" onChange={event => setRecipient(event.target.value)} /></label>
                     <div className="actions">
                       <button type="button" disabled={!canAct || !isAddress(recipient)}
@@ -138,7 +138,7 @@ export function MarketLifecycle({ lifecycle, panel, current, loading, error, onR
                       <button type="button" onClick={() => setRowAction(null)}>Cancel</button>
                     </div>
                   </> : <>
-                    <p className="hint">Delegation applies to every NFT you hold in {market.ranges.find(range => range.tierId === token.tierId)?.label}.
+                    <p className="hint">Delegation applies to every position you hold in {market.ranges.find(range => range.tierId === token.tierId)?.label}.
                       {!lifecycle.canDelegate && ' It can change only while entry is open.'}</p>
                     {lifecycle.delegates.some(item => item.tierId === token.tierId) && <p className="hint">Current delegate <code>{lifecycle.delegates.find(item => item.tierId === token.tierId)!.delegate}</code></p>}
                     <label className="field"><span>Voting delegate</span><input value={delegatee} spellCheck={false} autoComplete="off" placeholder="0x…" onChange={event => setDelegatee(event.target.value)} /></label>
@@ -163,12 +163,12 @@ export function MarketLifecycle({ lifecycle, panel, current, loading, error, onR
       {isSigna && <p className="hint">Use an external wallet for game transactions. <button type="button" onClick={() => connect({ externalOnly: true })}>Use external wallet</button></p>}
       {lifecycle.cashOutMode && <div className="section">
         <h3>{cashOutLabel}</h3>
-        <p className="hint">Select the NFTs to burn. {lifecycle.cashOutMode === 'cash-out' ? 'The ratified result determines their payout.' : 'Refunding returns their available value.'}</p>
+        <p className="hint">Select the positions to burn. {lifecycle.cashOutMode === 'cash-out' ? 'The ratified result determines their payout.' : 'Refunding returns their available value.'}</p>
         {tokenIds.length > 0 && matchingWallet && <>
-          {quote.isFetching && <p role="status">Checking the selected NFTs and payout…</p>}
+          {quote.isFetching && <p role="status">Checking the selected positions and payout…</p>}
           {quote.error && <p className="error" role="alert">{quote.error.message}</p>}
           {quoteReady && quote.data && <dl className="facts">
-            <dt>NFTs burned</dt><dd>{tokenIds.length}</dd>
+            <dt>Positions burned</dt><dd>{tokenIds.length}</dd>
             <dt>Minimum ETH received</dt><dd>{formatEther(BigInt(quote.data.reclaimWei))} ETH</dd>
             {BigInt(quote.data.defifaTokenWei) > 0n && <><dt>Defifa token reward</dt><dd>{formatEther(BigInt(quote.data.defifaTokenWei))} <a href={`${explorer}/token/${quote.data.defifaToken}`} target="_blank" rel="noreferrer">View token</a></dd></>}
             {BigInt(quote.data.baseProtocolTokenWei) > 0n && <><dt>Protocol token reward</dt><dd>{formatEther(BigInt(quote.data.baseProtocolTokenWei))} <a href={`${explorer}/token/${quote.data.baseProtocolToken}`} target="_blank" rel="noreferrer">View token</a></dd></>}

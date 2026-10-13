@@ -159,7 +159,7 @@ dialog .actions { justify-content: flex-end; }
 .distribution-payout::before { content: ''; width: 6px; height: 12px; background: var(--blue); }
 .distribution-selection { min-height: 3em; font-size: 13px; font-variant-numeric: tabular-nums; }
 .distribution-overflow { display: flex; flex-wrap: wrap; gap: 4px 18px; margin-block: 6px 14px; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
-/* Per-NFT actions open in a row beneath the NFT, so no scroll box can clip them. */
+/* Per-position actions open in a row beneath the position, so no scroll box can clip them. */
 .row-menu-cell { width: 1%; text-align: right; }
 .row-menu { min-height: 0; margin: 0; padding: 2px 10px; border: 0; background: none; font-size: 18px; line-height: 1; border-radius: 4px; }
 .row-menu:hover, .row-menu[aria-expanded="true"] { background: var(--sunk); }

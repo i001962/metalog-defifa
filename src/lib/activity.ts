@@ -9,7 +9,7 @@ export type ActivityEvent = {
   blockNumber: string
   timestamp: number
   account: Address
-  /** NFTs minted (entry) or burned (exit) per range, in market range order. */
+  /** positions minted (entry) or burned (exit) per range, in market range order. */
   quantities: number[]
 }
 export type ActivityPage = {

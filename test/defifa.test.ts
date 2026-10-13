@@ -200,7 +200,7 @@ describe('Defifa deployment binding', () => {
 })
 
 describe('Defifa launch calldata and fresh state', () => {
-  it('preserves optional names in the Center manifest and native NFT tier labels', async () => {
+  it('preserves optional names in the Center manifest and native position tier labels', async () => {
     const named = validateMarket({ ...customDefinition, rangeNames: ['Rekt', 'FUD', 'Crab', 'Hopium', 'FOMO', 'Moon'] })
     const tx = await prepareCreateMarket(named, chainId, account)
     const launch = decodeFunctionData({ abi: DEFIFA_ABI.DefifaDeployer, data: tx.data }).args![0] as {
@@ -457,7 +457,7 @@ describe('Defifa market reads and curve entry', () => {
     await expect(readMarket(chainId, '7')).rejects.toThrow('onchain entry times')
   })
 
-  it('encodes the exact sorted NFT quantities, self-delegation, amount and retrievable curve', async () => {
+  it('encodes the exact sorted position quantities, self-delegation, amount and retrievable curve', async () => {
     now = definition.entryOpensAt + 1
     const market = await readMarket(chainId, '7')
     const coefficients = coefficientsFromMoments(0, 50)

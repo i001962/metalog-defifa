@@ -113,12 +113,12 @@ function nativeWeights(market: MarketSnapshot, weights: TierWeight[]): NativeWei
 }
 
 function tokenIdsFor(market: MarketSnapshot, ids: readonly string[]): bigint[] {
-  if (!Array.isArray(ids) || !ids.length || ids.length > MAX_POSITIONS) throw new Error(`Select between 1 and ${MAX_POSITIONS} NFTs.`)
-  const result = ids.map(value => uint(value, 'NFT token ID', false))
-  if (new Set(result.map(String)).size !== result.length) throw new Error('Select each NFT only once.')
+  if (!Array.isArray(ids) || !ids.length || ids.length > MAX_POSITIONS) throw new Error(`Select between 1 and ${MAX_POSITIONS} positions.`)
+  const result = ids.map(value => uint(value, 'position ID', false))
+  if (new Set(result.map(String)).size !== result.length) throw new Error('Select each position only once.')
   for (const id of result) {
     if (id % TOKEN_MULTIPLIER === 0n || !market.ranges.some(range => BigInt(range.tierId) === id / TOKEN_MULTIPLIER)) {
-      throw new Error('A selected NFT is outside this market’s ranges.')
+      throw new Error('A selected position is outside this market’s ranges.')
     }
   }
   return result.sort((a, b) => a < b ? -1 : a > b ? 1 : 0)
@@ -142,7 +142,7 @@ function readAt(client: PublicClient, market: MarketSnapshot) {
 async function assertOwned(client: PublicClient, market: MarketSnapshot, ids: readonly bigint[], account: Address) {
   const read = readAt(client, market)
   const owners = await Promise.all(ids.map(id => read<Address>(market.hook, 'DefifaHook', 'ownerOf', [id])))
-  if (owners.some(owner => !sameAddress(owner, account))) throw new Error('Your wallet no longer owns every selected NFT.')
+  if (owners.some(owner => !sameAddress(owner, account))) throw new Error('Your wallet no longer owns every selected position.')
 }
 
 async function readInventory(client: PublicClient, market: MarketSnapshot, account: Address | null, cursor?: string) {
@@ -294,7 +294,7 @@ function cashOutArgs(market: MarketSnapshot, account: Address, ids: readonly big
 }
 
 async function quoteAt(client: PublicClient, market: MarketSnapshot, ids: readonly bigint[], account: Address): Promise<CashOutQuote> {
-  if (!phaseCapabilities(market, true).cashOutMode) throw new Error('NFTs cannot be cashed out during this game phase.')
+  if (!phaseCapabilities(market, true).cashOutMode) throw new Error('Positions cannot be cashed out during this game phase.')
   if (market.phase === 5 && !market.noContestTriggered) throw new Error('Open the native no-contest refunds before cashing out.')
   await assertOwned(client, market, ids, account)
   const d = deploymentForChain(market.chainId)
@@ -331,9 +331,9 @@ function actionCall(market: MarketSnapshot, action: LifecycleAction, account: Ad
     case 'transfer': {
       const [tokenId] = tokenIdsFor(market, [action.tokenId])
       const recipient = signer(action.to)
-      if (sameAddress(recipient, account)) throw new Error('Choose a different recipient for this NFT.')
-      to = market.hook; abi = DEFIFA_ABI.DefifaHook; fn = 'safeTransferFrom'; args = [account, recipient, tokenId]; title = 'Send NFT'
-      details.push({ label: 'NFT', value: tokenId.toString() }, { label: 'Recipient', value: recipient })
+      if (sameAddress(recipient, account)) throw new Error('Choose a different recipient for this position.')
+      to = market.hook; abi = DEFIFA_ABI.DefifaHook; fn = 'safeTransferFrom'; args = [account, recipient, tokenId]; title = 'Send position'
+      details.push({ label: 'Position', value: tokenId.toString() }, { label: 'Recipient', value: recipient })
       break
     }
     case 'delegate': {
@@ -366,8 +366,8 @@ function actionCall(market: MarketSnapshot, action: LifecycleAction, account: Ad
       const ids = tokenIdsFor(market, action.tokenIds)
       const minimum = uint(action.minReclaimedWei, 'minimum reclaim amount')
       to = d.terminal; abi = DEFIFA_ABI.JBMultiTerminal; fn = 'cashOutTokensOf'; args = cashOutArgs(market, account, ids, minimum)
-      title = market.phase === 4 ? 'Cash out NFTs and claim protocol tokens' : 'Refund NFTs'
-      details.push({ label: 'NFTs to burn', value: ids.join(', ') }, { label: 'Minimum ETH (wei)', value: minimum.toString() }); break
+      title = market.phase === 4 ? 'Cash out positions and claim protocol tokens' : 'Refund positions'
+      details.push({ label: 'Positions to burn', value: ids.join(', ') }, { label: 'Minimum ETH (wei)', value: minimum.toString() }); break
     }
   }
   return { to, data: encodeFunctionData({ abi, functionName: fn, args }), value: 0n, title, details }
@@ -384,7 +384,7 @@ async function assertAction(client: PublicClient, market: MarketSnapshot, action
     case 'submit-scorecard':
       if (market.phase !== 3) throw new Error('Results can only be proposed during the native scoring phase.')
       if (nativeWeights(market, action.weights).some(weight => weight.cashOutWeight > 0n && BigInt(market.tiers.find(tier => BigInt(tier.tierId) === weight.id)!.supply) === 0n)) {
-        throw new Error('A range with no circulating NFTs cannot receive a result payout weight.')
+        throw new Error('A range with no circulating Positions cannot receive a result payout weight.')
       }
       break
     case 'attest': case 'revoke': {
@@ -457,7 +457,7 @@ export async function verifyLifecycleReceipt(request: LifecycleRequest, receipt:
   let action: LifecycleAction
   switch (decoded.functionName) {
     case 'safeTransferFrom':
-      if (args.length !== 3 || !sameAddress(args[0], account)) throw new Error('The recorded NFT transfer is not supported.')
+      if (args.length !== 3 || !sameAddress(args[0], account)) throw new Error('The recorded position transfer is not supported.')
       action = { kind: 'transfer', to: args[1] as Address, tokenId: String(args[2]) }; break
     case 'setTierDelegatesTo': {
       const delegations = args[0] as { delegatee: Address; tierId: bigint }[]
@@ -487,7 +487,7 @@ export async function verifyLifecycleReceipt(request: LifecycleRequest, receipt:
     case 'transfer': {
       const transfers = receiptEvents<TransferArgs>(receipt, 'DefifaHook', market.hook, 'Transfer')
       if (!transfers.some(item => item.tokenId === BigInt(action.tokenId) && sameAddress(item.from, account) && sameAddress(item.to, action.to))) {
-        throw new Error('The receipt does not confirm the reviewed NFT transfer.')
+        throw new Error('The receipt does not confirm the reviewed position transfer.')
       }
       break
     }
@@ -549,7 +549,7 @@ export async function verifyLifecycleReceipt(request: LifecycleRequest, receipt:
       if (burns.length !== ids.length || burns.some((tokenId, index) => tokenId !== ids[index]) || !events.some(item => item.projectId === id
         && sameAddress(item.holder, account) && sameAddress(item.beneficiary, account) && sameAddress(item.caller, account) && item.cashOutCount === 0n
         && item.reclaimAmount >= BigInt(action.minReclaimedWei) && item.metadata === cashOutMetadata(market.chainId, ids))) {
-        throw new Error('The receipt does not confirm every NFT burn and the reviewed reclaim amount.')
+        throw new Error('The receipt does not confirm every position burn and the reviewed reclaim amount.')
       }
       if (market.phase === 4) {
         const claims = receiptEvents<{ beneficiary: Address; defifaTokenAmount: bigint; baseProtocolTokenAmount: bigint; caller: Address }>(receipt, 'DefifaHook', market.hook, 'ClaimedTokens')

@@ -39,7 +39,7 @@ export function lookupTable(counts: readonly bigint[], tierIds: readonly number[
   const total = counts.reduce((sum, count) => sum + count, 0n)
   if (total === 0n) return []
   const numericTotal = Number(total)
-  if (!Number.isFinite(numericTotal)) throw new Error('NFT totals exceed the numeric range of a SIP lookup table.')
+  if (!Number.isFinite(numericTotal)) throw new Error('Position totals exceed the numeric range of a SIP lookup table.')
   let cumulative = 0n
   let previous = 0
   const rows: [number, number][] = []

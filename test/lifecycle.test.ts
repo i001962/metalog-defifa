@@ -155,7 +155,7 @@ describe('native lifecycle preparation', () => {
     await expect(tx.reverify!()).rejects.toThrow('below the reviewed minimum')
   })
 
-  it('rejects changed phase, non-owned NFTs, duplicates and oversized selections', async () => {
+  it('rejects changed phase, non-owned positions, duplicates and oversized selections', async () => {
     const tx = await prepareLifecycleAction(market, { kind: 'cash-out', tokenIds: [firstId.toString()], minReclaimedWei: '100' }, account)
     market.phase = 4
     await expect(tx.reverify!()).rejects.toThrow('phase changed')
@@ -325,7 +325,7 @@ describe('receipt effects and reload recovery', () => {
       log('DefifaHook', hook, 'Transfer', { from: account, to: other, tokenId: firstId }),
       log('DefifaHook', hook, 'Transfer', { from: other, to: hook, tokenId: firstId }),
     ]))).resolves.toBeUndefined()
-    await expect(verifyLifecycleReceipt(tx, receipt([log('DefifaHook', other, 'Transfer', { from: account, to: other, tokenId: firstId })]))).rejects.toThrow('reviewed NFT transfer')
+    await expect(verifyLifecycleReceipt(tx, receipt([log('DefifaHook', other, 'Transfer', { from: account, to: other, tokenId: firstId })]))).rejects.toThrow('reviewed position transfer')
   })
 
   it.each([{ percentages: ['100', '0', '0'] }, { percentages: ['50', '30', '20'] }])('requires the exact native scorecard event for $percentages and rejects forged/re-targeted recovery', async ({ percentages }) => {
@@ -355,7 +355,7 @@ describe('receipt effects and reload recovery', () => {
     const cash = (amount: bigint) => log('JBMultiTerminal', d.terminal, 'CashOutTokens', { rulesetId: 10n, rulesetCycleNumber: 1n, projectId: 7n, holder: account, beneficiary: account, cashOutCount: 0n, cashOutTaxRate: 0n, reclaimAmount: amount, metadata: decoded.args![6], caller: account })
     const burn = log('DefifaHook', hook, 'Transfer', { from: account, to: zeroAddress, tokenId: firstId })
     await expect(verifyLifecycleReceipt(tx, receipt([burn, cash(100n)]))).resolves.toBeUndefined()
-    await expect(verifyLifecycleReceipt(tx, receipt([cash(100n)]))).rejects.toThrow('every NFT burn')
+    await expect(verifyLifecycleReceipt(tx, receipt([cash(100n)]))).rejects.toThrow('every position burn')
     await expect(verifyLifecycleReceipt(tx, receipt([burn, cash(99n)]))).rejects.toThrow('reviewed reclaim')
   })
 

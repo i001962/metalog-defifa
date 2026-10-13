@@ -96,7 +96,7 @@ test('SIPmath downloads preserve all three modes and agree with repeatable previ
         await page.getByRole('textbox', { name: new RegExp(`^a${index + 1} \\| `) }).fill(String(expressive[index]))
       }
     } else {
-      const counts = page.getByRole('region', { name: 'NFT counts', exact: true }).getByRole('textbox')
+      const counts = page.getByRole('region', { name: 'Position counts', exact: true }).getByRole('textbox')
       for (const input of await counts.all()) await input.fill('0')
       await counts.first().fill('1')
       await counts.nth(10).fill('2')
@@ -184,7 +184,7 @@ test('invalid active drafts disable native and SIPmath downloads through mode ch
   for (const button of buttons) await expect(button).toBeDisabled()
   await scale.fill('1')
   await page.getByRole('button', { name: 'By range', exact: true }).click()
-  const firstCount = page.getByRole('region', { name: 'NFT counts', exact: true }).getByRole('textbox').first()
+  const firstCount = page.getByRole('region', { name: 'Position counts', exact: true }).getByRole('textbox').first()
   await firstCount.fill('')
   for (const button of buttons) await expect(button).toBeDisabled()
   await page.getByRole('button', { name: 'Expressive', exact: true }).click()

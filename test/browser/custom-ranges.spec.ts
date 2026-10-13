@@ -72,7 +72,7 @@ test('range layout modes preserve independent drafts and recover from invalid bo
   expect(failures).toEqual([])
 })
 
-test('unequal range definitions preserve exact intervals and NFT allocations in JSON and SIPmath', async ({ page, request }) => {
+test('unequal range definitions preserve exact intervals and position allocations in JSON and SIPmath', async ({ page, request }) => {
   await openDefinition(page)
   await page.getByRole('button', { name: 'Advanced', exact: true }).click()
   await page.getByLabel('Range 1 upper (%)', { exact: true }).fill('-4.25')

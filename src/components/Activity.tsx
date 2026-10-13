@@ -57,7 +57,7 @@ function ActivityRow({ event, market, explorer }: { event: ActivityEvent; market
     <span className="activity-toggle" aria-hidden="true">{event.kind === 'entry' ? '▸' : ''}</span>
     <RangeStrip values={event.quantities} />
     <span><a href={`${explorer}/address/${event.account}`} target="_blank" rel="noreferrer">{short(event.account)}</a>
-      {event.kind === 'entry' ? ' entered with ' : ' exited with '}<strong>{count}</strong> NFT{count === 1 ? '' : 's'}</span>
+      {event.kind === 'entry' ? ' entered with ' : ' exited with '}<strong>{count}</strong> position{count === 1 ? '' : 's'}</span>
     <a className="activity-time" href={`${explorer}/tx/${event.transactionHash}`} target="_blank" rel="noreferrer">{ago(event.timestamp)}</a>
   </>
   if (event.kind === 'exit') return <li data-kind="exit"><div className="activity-line">{line}</div></li>

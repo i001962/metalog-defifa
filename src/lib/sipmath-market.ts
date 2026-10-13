@@ -5,7 +5,7 @@ import { buildSIPmath, type SipVariable } from './sipmath'
 
 function supplyCount(value: string): bigint {
   if (typeof value !== 'string' || !/^(?:0|[1-9]\d*)$/.test(value)) {
-    throw new Error('Snapshot NFT supply must be a non-negative integer string.')
+    throw new Error('Snapshot position supply must be a non-negative integer string.')
   }
   return BigInt(value)
 }

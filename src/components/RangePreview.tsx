@@ -35,7 +35,7 @@ export function RangePreview({ ranges, stale, invalidBoundaries, selected, bound
     onBoundaryChange?.(index, String(Number(Math.min(MAX_RANGE_BOUNDARY, Math.max(-MAX_RANGE_BOUNDARY, value)).toFixed(RANGE_DECIMAL_PLACES))))
   }
   return <figure className="range-preview" aria-label="Range visualization">
-    <div className="range-preview-heading"><span>{ranges.length} ranges | numbered by NFT tier</span>{stale && <span>Last valid ranges</span>}</div>
+    <div className="range-preview-heading"><span>{ranges.length} ranges | numbered by tier</span>{stale && <span>Last valid ranges</span>}</div>
     <div className="range-preview-map">
       <button type="button" className="range-overflow" aria-label={name(first)} aria-pressed={selected === first.tierId} onFocus={() => onSelect(first.tierId)} onMouseEnter={() => onSelect(first.tierId)} onClick={() => onSelect(first.tierId)}>1 ←<span>{first.label}</span></button>
       <div className="range-preview-finite" ref={plot}>

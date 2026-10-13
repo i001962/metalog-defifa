@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
 
-test('manual NFT buckets update chart, stake and export and recover from invalid drafts', async ({ page }) => {
+test('manual position buckets update chart, stake and export and recover from invalid drafts', async ({ page }) => {
   await page.goto('/markets/example')
   const mean = page.getByRole('textbox', { name: 'Mean (%)', exact: true })
   const sigma = page.getByRole('textbox', { name: 'Standard deviation (%)' })
@@ -52,21 +52,21 @@ test('manual NFT buckets update chart, stake and export and recover from invalid
   await expect(positions.getByRole('textbox')).toHaveCount(0)
   const order = positions.getByRole('table', { name: 'Your order', exact: true })
   await expect(order).toBeVisible()
-  expect(await order.getByRole('columnheader').allTextContents()).toEqual(['Range', 'Curve', 'NFTs'])
+  expect(await order.getByRole('columnheader').allTextContents()).toEqual(['Range', 'Curve', 'Positions'])
   // Only ranges with positions are listed, and the checkout never scrolls sideways.
   expect(await order.locator('tbody tr td:nth-child(3)').allTextContents()).not.toContain('0')
   expect(await positions.evaluate(element => [element, ...element.querySelectorAll('table')].every(node =>
     node.scrollWidth <= node.clientWidth + 1))).toBe(true)
   await page.getByRole('button', { name: 'By range', exact: true }).click()
-  const countEditor = page.getByRole('region', { name: 'NFT counts', exact: true })
-  const counts = countEditor.getByRole('textbox', { name: /^NFTs for / })
+  const countEditor = page.getByRole('region', { name: 'Position counts', exact: true })
+  const counts = countEditor.getByRole('textbox', { name: /^Positions for / })
   await expect(counts).toHaveCount(21)
   expect((await countEditor.boundingBox())!.height).toBeLessThanOrEqual(288)
   expect(await countEditor.evaluate(element => element.scrollHeight > element.clientHeight)).toBe(true)
   await counts.first().fill('5')
   await expect(page.getByText('Reference curve', { exact: true }).first()).toBeVisible()
   await expect(chart).toBeVisible()
-  await expect(overflow).toContainText('5 NFTs')
+  await expect(overflow).toContainText('5 positions')
   await expect(overflow).toContainText('4.76%')
   await expect(stake).toHaveValue('0.105')
   await expect(stake).toHaveAttribute('readonly', '')
@@ -98,9 +98,9 @@ test('manual NFT buckets update chart, stake and export and recover from invalid
   await counts.first().fill('1')
   await counts.last().fill('2')
   await expect(stake).toHaveValue('0.003')
-  await expect(overflow).toContainText('1 NFTs')
+  await expect(overflow).toContainText('1 positions')
   await expect(overflow).toContainText('33.33%')
-  await expect(overflow).toContainText('2 NFTs')
+  await expect(overflow).toContainText('2 positions')
   await expect(overflow).toContainText('66.67%')
   expect(await chart.locator('rect').evaluateAll(bars => bars.every(bar => bar.getAttribute('height') === '0'))).toBe(true)
   await expect(page.getByRole('button', { name: 'Download draft' })).toBeEnabled()
@@ -137,7 +137,7 @@ test('example curve, decimals, raw validation and independent stake errors', asy
   await expect(density.locator('rect')).toHaveCount(19)
   if (test.info().project.name === 'desktop') {
     const chart = await page.getByRole('img', { name: 'Your probability distribution', exact: true }).boundingBox()
-    if (!chart) throw new Error('The NFT distribution is not rendered.')
+    if (!chart) throw new Error('The position distribution is not rendered.')
     await page.mouse.move(chart.x + chart.width / 2, chart.y + chart.height * .1)
     await page.mouse.down()
     await page.mouse.move(chart.x + chart.width * .6, chart.y + chart.height * .05, { steps: 5 })
@@ -178,11 +178,11 @@ test('example curve, decimals, raw validation and independent stake errors', asy
   const chart = page.getByRole('img', { name: 'Your probability distribution', exact: true })
   await expect(chart.locator('rect')).toHaveCount(19)
   expect(await chart.locator('rect').evaluateAll(bars => bars.map(bar => bar.getAttribute('aria-label')))).toEqual(draft.ranges.slice(1, -1).map((range: { label: string }, index: number) =>
-    `${range.label}: ${draft.allocation.quantities[index + 1]} NFTs (${(draft.allocation.actualProbabilities[index + 1] * 100).toFixed(2)}%)`))
+    `${range.label}: ${draft.allocation.quantities[index + 1]} positions (${(draft.allocation.actualProbabilities[index + 1] * 100).toFixed(2)}%)`))
   const overflow = page.getByRole('region', { name: 'Overflow positions', exact: true })
   for (const index of [0, draft.ranges.length - 1]) {
     await expect(overflow).toContainText(draft.ranges[index].label)
-    await expect(overflow).toContainText(`${draft.allocation.quantities[index]} NFTs`)
+    await expect(overflow).toContainText(`${draft.allocation.quantities[index]} positions`)
     await expect(overflow).toContainText(`${(draft.allocation.actualProbabilities[index] * 100).toFixed(2)}%`)
   }
   await expect(page.getByRole('table', { name: 'Your order', exact: true })).toBeVisible()
@@ -266,7 +266,7 @@ test('three editors retain independent valid and invalid drafts and export only 
   const median = page.getByRole('textbox', { name: 'a1 | Median', exact: true })
   const scale = page.getByRole('textbox', { name: 'a2 | Base spread', exact: true })
   const middle = page.getByRole('textbox', { name: 'a4 | Middle spread', exact: true })
-  const counts = page.getByRole('region', { name: 'NFT counts', exact: true }).getByRole('textbox', { name: /^NFTs for / })
+  const counts = page.getByRole('region', { name: 'Position counts', exact: true }).getByRole('textbox', { name: /^Positions for / })
   const bars = page.getByRole('img', { name: 'Your probability distribution', exact: true }).locator('rect')
   const heights = () => bars.evaluateAll(elements => elements.map(element => element.getAttribute('height')))
   const download = page.getByRole('button', { name: 'Download draft', exact: true })

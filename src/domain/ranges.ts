@@ -189,7 +189,7 @@ export function createEqualWidthRanges(count: number, width: number): RangeBin[]
   validateRangeWidth(width)
   const finiteCount = count - 2
   const boundaries = Array.from({ length: finiteCount + 1 }, (_, index) => {
-    // The advertised NFT labels and allocation boundaries must describe the same intervals.
+    // The advertised position labels and allocation boundaries must describe the same intervals.
     return Number(((index - finiteCount / 2) * width).toFixed(RANGE_DECIMAL_PLACES))
   })
   return rangesFromBoundaries(boundaries)

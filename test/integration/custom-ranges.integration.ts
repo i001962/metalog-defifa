@@ -86,7 +86,7 @@ it('creates unequal ranges and recovers their curve-derived mint without sending
     expect(allocation.quantities).toEqual([2, 36, 15, 42, 5])
     const request = await prepareEntry(market, allocation, account, coefficients)
     expect(request.value).toBe(100n * BigInt(definition.unitPriceWei))
-    console.info('Local 100-NFT entry prepared', { chainId, projectId: market.projectId })
+    console.info('Local 100-position entry prepared', { chainId, projectId: market.projectId })
     const send = runtime.send
     let hash: Hex | undefined
     runtime.send = vi.fn(async call => {
@@ -102,14 +102,14 @@ it('creates unequal ranges and recovers their curve-derived mint without sending
     }
     const recovered = await recoverTransaction(runtime, hash, restored)
     expect(recovered.status).toBe('success')
-    console.info('Local 100-NFT entry recovered', { chainId, transactionHash: recovered.transactionHash })
+    console.info('Local 100-position entry recovered', { chainId, transactionHash: recovered.transactionHash })
     expect(runtime.send).toHaveBeenCalledTimes(1)
     expect(readPendingTransaction(runtime.storage)).toBeNull()
     const mints = parseEventLogs({ abi: DEFIFA_ABI.DefifaHook, eventName: 'Transfer', logs: recovered.logs })
       .filter(log => log.address.toLowerCase() === market.hook.toLowerCase()
         && (log.args as { from: Address }).from === zeroAddress)
     expect(mints).toHaveLength(100)
-    // Native NFT labels are the onchain tier names. Full tokenURI also loads
+    // Native position labels are the onchain tier names. Full tokenURI also loads
     // two large onchain fonts; qualify that renderer on a full-node RPC.
     for (const range of market.ranges) {
       expect(await fork.client.readContract({ address: market.hook, abi: DEFIFA_ABI.DefifaHook,
@@ -137,6 +137,6 @@ it('creates unequal ranges and recovers their curve-derived mint without sending
       }
     } finally { await fork.stop() }
   }
-// Center-backed cold forks fetch every token's storage; keep the 100-NFT
+// Center-backed cold forks fetch every token's storage; keep the 100-position
 // qualification while bounding the whole test independently of production RPC.
 }, 600_000)

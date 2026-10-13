@@ -13,7 +13,7 @@ export function forecastPreview(input: { market: unknown; coefficients: readonly
     ? allocatePositions(coefficients, ranges, input.positions!)
     : allocateManualPositions(coefficients, ranges, input.quantities)
   if (input.positions !== undefined && input.positions !== allocation.count) {
-    throw new Error('The position total does not match the NFT counts.')
+    throw new Error('The position total does not match the position counts.')
   }
   return {
     schema: 'metalog.forecast.v1',

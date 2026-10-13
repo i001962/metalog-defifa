@@ -274,7 +274,7 @@ describe('Ranges and indivisible positions', () => {
     expect(() => allocatePositions(a, [ranges[0], { ...ranges[1], tierId: 1 }, ...ranges.slice(2)], 10)).toThrow('unique')
   })
 
-  it('preserves exact manual counts and keeps source probabilities separate from NFT shares', () => {
+  it('preserves exact manual counts and keeps source probabilities separate from position shares', () => {
     const ranges = createRanges(3)
     const a = coefficientsFromMoments(0, 1)
     const quantities = [7, 0, 3]
@@ -330,7 +330,7 @@ describe('Ranges and indivisible positions', () => {
     for (const bar of large) expect(bar.share).toBeCloseTo(1 / 3, 15)
     expect(large.reduce((sum, bar) => sum + bar.share, 0)).toBeCloseTo(1, 15)
     for (const quantities of [[], [0, 0], new Array<number>(3), [-1, 0, 2], [.5, 0, 1], [NaN, 0, 1], [Infinity, 0, 1], [Number.MAX_SAFE_INTEGER + 1, 0, 0]]) {
-      expect(() => positionDensities(ranges, quantities)).toThrow('whole NFT count')
+      expect(() => positionDensities(ranges, quantities)).toThrow('whole position count')
     }
     expect(() => positionDensities([ranges[0], { ...ranges[1], lower: 0 }, ranges[2]], [1, 2, 3])).toThrow('contiguous')
   })

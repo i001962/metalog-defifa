@@ -145,7 +145,7 @@ export async function readMarketAt(
       client.readContract({ address: hook, abi: metadataAbi, functionName: 'baseURI', blockNumber }),
     ])
     if (contractUri !== published.contractUri || baseUri !== '') {
-      throw new Error('The NFT collection metadata does not match this market.')
+      throw new Error('The collection metadata does not match this market.')
     }
   }
   const tiers = await Promise.all(rawTiers.map(async (tier, index) => {
@@ -282,7 +282,7 @@ function verifyEntryReceipt(hook: Address, owner: Address, tierIds: number[], re
     .filter(log => sameAddress(log.from, zeroAddress) && sameAddress(log.to, owner))
   const actualIds = transfers.map(log => Number(log.tokenId / TOKEN_MULTIPLIER)).sort((left, right) => left - right)
   if (receipt.status !== 'success' || JSON.stringify(actualIds) !== JSON.stringify(tierIds)) {
-    throw new Error('The receipt does not confirm the complete reviewed NFT allocation.')
+    throw new Error('The receipt does not confirm the complete reviewed position allocation.')
   }
 }
 
@@ -321,7 +321,7 @@ export function verifyRecordedEntry(
   const allocation = memo.schema === 'metalog.entry.v1'
     ? allocatePositions(coefficients, market.ranges, memo.count, MAX_RECORDED_POSITIONS)
     : allocateManualPositions(coefficients, market.ranges, memo.quantities as number[], MAX_RECORDED_POSITIONS)
-  if (memo.count !== allocation.count) throw new Error('The recorded position total does not match the NFT counts.')
+  if (memo.count !== allocation.count) throw new Error('The recorded position total does not match the position counts.')
   const tierIds = expandedTierIds(allocation)
   if (amount !== BigInt(market.definition.unitPriceWei) * BigInt(allocation.count)) {
     throw new Error('The recorded entry does not pay the exact position price.')
@@ -448,7 +448,7 @@ export async function prepareEntry(
   if ((Object.keys(expected) as (keyof Allocation)[]).some(key => JSON.stringify(expected[key]) !== JSON.stringify(allocation[key]))) {
     throw new Error(allocation.mode === 'curve'
       ? 'The position allocation does not match the submitted curve.'
-      : 'The position allocation does not match the submitted NFT counts.')
+      : 'The position allocation does not match the submitted position counts.')
   }
   const tierIds = expandedTierIds(expected)
   const client = publicClientForChain(market.chainId)

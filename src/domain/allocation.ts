@@ -62,7 +62,7 @@ export function allocateManualPositions(coefficients: Coefficients, ranges: read
 function validateQuantities(quantities: readonly number[], length: number): void {
   if (!Array.isArray(quantities) || quantities.length !== length
     || Array.from(quantities).some(quantity => !Number.isSafeInteger(quantity) || quantity < 0)) {
-    throw new Error('Enter one non-negative whole NFT count for every range.')
+    throw new Error('Enter one non-negative whole position count for every range.')
   }
 }
 

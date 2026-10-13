@@ -11,7 +11,7 @@ const LEFT = 8, RIGHT = 8, TOP = 24, BOTTOM = 51, TAIL_GAP = 10, TAIL_SHARE = .5
 export function PositionChart({ ranges, quantities, coefficients, crowd, crowdCurve, payout, live, mine = true, onChange, onPick, readOnly = false, reference = false, submitted = false }: {
   ranges: RangeBin[]
   quantities: number[]
-  /** Circulating NFTs per range, drawn as dotted bars behind your order in the same density units. */
+  /** Circulating positions per range, drawn as dotted bars behind your order in the same density units. */
   crowd?: number[]
   /** The crowd's entry curves, averaged into one line and used to answer at any value. */
   crowdCurve?: CrowdCurve | null
@@ -103,9 +103,9 @@ export function PositionChart({ ranges, quantities, coefficients, crowd, crowdCu
   const line = density?.buckets.map((bucket, index) => `${index ? 'L' : 'M'}${x(bucket.lower)},${y(bucket.density)} L${x(bucket.upper)},${y(bucket.density)}`).join(' ') ?? ''
   const basisFinite = basis?.filter(position => position.density !== null) ?? []
   const selected = basis?.find(position => position.range.tierId === selectedTier) ?? basisFinite[Math.floor(basisFinite.length / 2)]
-  const describe = (position: NonNullable<typeof positions>[number]) => `${position.range.label}: ${position.quantity} NFTs (${(position.share * 100).toFixed(2)}%)`
+  const describe = (position: NonNullable<typeof positions>[number]) => `${position.range.label}: ${position.quantity} positions (${(position.share * 100).toFixed(2)}%)`
   const instruction = submitted ? 'Submitted curve and minted positions.' : readOnly ? 'Showing the last valid allocation while you edit.'
-    : interactive ? 'Drag to move the curve. Drag up to widen, down to narrow.' : 'Edit NFT counts in By range.'
+    : interactive ? 'Drag to move the curve. Drag up to widen, down to narrow.' : 'Edit position counts in By range.'
   // Every bar edge is labeled; on narrow or many-range charts every nth, keeping the last edge (about 52px a label).
   const LABEL_SPACE = 52
   const every = Math.max(1, Math.ceil(LABEL_SPACE / (plotWidth / Math.max(1, edges.length - 1))))
@@ -192,7 +192,7 @@ export function PositionChart({ ranges, quantities, coefficients, crowd, crowdCu
         if (event.shiftKey || ['ArrowUp', 'ArrowDown'].includes(event.key)) transform(coefficients, 0, ['ArrowUp', 'ArrowRight'].includes(event.key) ? 1.05 : 1 / 1.05)
         else transform(coefficients, span * (event.key === 'ArrowLeft' ? -.015 : .015), 1)
       }}>
-      <desc id={descriptionId}>{`Bars show NFT share divided by range width; the line shows ${reference ? 'reference ' : ''}curve density. Focus or tap a range for its exact count and share. ${interactive ? 'Drag to move or widen the curve. Arrow keys move; Shift and arrow keys change spread.' : instruction}`}</desc>
+      <desc id={descriptionId}>{`Bars show position share divided by range width; the line shows ${reference ? 'reference ' : ''}curve density. Focus or tap a range for its exact count and share. ${interactive ? 'Drag to move or widen the curve. Arrow keys move; Shift and arrow keys change spread.' : instruction}`}</desc>
       <defs><pattern id={dots} width="7" height="7" patternUnits="userSpaceOnUse">
         <circle cx="2" cy="2" r="1.7" className="dot-a" /><circle cx="5.5" cy="5" r="1.5" className="dot-b" /><circle cx="5" cy="1.5" r=".9" className="dot-c" />
       </pattern></defs>
@@ -253,21 +253,21 @@ export function PositionChart({ ranges, quantities, coefficients, crowd, crowdCu
       top: `${Math.max(0, barTop(selected) / HEIGHT * 100)}%`,
     }}>
       <strong>{selected.range.label}</strong>
-      {mine && <span>Yours <b>{selected.quantity}</b> NFTs, {(selected.share * 100).toFixed(1)}%</span>}
-      {crowdShare(selected.range.tierId) !== undefined && <span className="callout-crowd">Crowd {crowdAll[ranges.indexOf(selected.range)].quantity} NFTs, {(crowdShare(selected.range.tierId)! * 100).toFixed(1)}%</span>}
+      {mine && <span>Yours <b>{selected.quantity}</b> positions, {(selected.share * 100).toFixed(1)}%</span>}
+      {crowdShare(selected.range.tierId) !== undefined && <span className="callout-crowd">Crowd {crowdAll[ranges.indexOf(selected.range)].quantity} positions, {(crowdShare(selected.range.tierId)! * 100).toFixed(1)}%</span>}
       {payout && <span className="callout-payout">Payout {(payout[ranges.indexOf(selected.range)] * 100).toFixed(1)}%</span>}
       {onPick && <em>Click to edit</em>}
     </div>}
     </div>
     <div className="distribution-legend">
-      {mine && <span className="distribution-line">{reference ? 'Reference curve' : 'Curve'}</span>}
-      {mine && <span className={crowdAll.length ? 'distribution-bars distribution-order' : 'distribution-bars'}>{crowdAll.length ? 'Your order' : 'NFT positions'}</span>}
+      {mine && <span className={crowdAll.length ? 'distribution-bars distribution-order' : 'distribution-bars'}>{crowdAll.length ? 'Your order' : 'Positions'}</span>}
       {crowdAll.length > 0 && (mine || payout) && <span className="distribution-crowd">Crowd</span>}
       {payout && <span className="distribution-payout">Ratified payout</span>}
+      {mine && <span className="distribution-line">{reference ? 'Reference curve' : 'Your curve'}</span>}
       {crowdLine && crowdCurve && <span className="distribution-crowd-curve">Crowd curve, {crowdCurve.complete ? `${crowdCurve.covered} of ${crowdCurve.minted}` : `first ${crowdCurve.covered}`} positions</span>}
     </div>
     <div className="distribution-selection" role="status" aria-label="Selected range">
-      {selected ? describe(selected) : 'NFT quantities cannot be displayed.'}
+      {selected ? describe(selected) : 'Position quantities cannot be displayed.'}
     </div>
     <div className="distribution-overflow sr-only" role="region" aria-label="Overflow positions">
       <span>Overflow</span>

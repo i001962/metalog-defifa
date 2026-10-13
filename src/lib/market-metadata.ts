@@ -53,7 +53,7 @@ async function readJson(uri: string): Promise<unknown> {
 }
 
 function published(definition: MarketDefinition, projectUri: string): PublishedMarketMetadata {
-  // Defifa's native resolver generates each NFT's metadata from its onchain tier name.
+  // Defifa's native resolver generates each position's metadata from its onchain tier name.
   return { mode: 'ipfs', definition, projectUri, contractUri: projectUri, tierUris: [],
     encodedTierUris: marketRanges(definition).map(() => zeroHash) }
 }

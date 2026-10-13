@@ -45,7 +45,7 @@ test('the built website creates, enters, refunds, transfers, settles and claims 
     console.info(`${action}: ${hash} at local block ${receipt.blockNumber}`)
     return receipt
   }
-  const nfts = () => page.getByRole('region', { name: 'Your NFTs', exact: true })
+  const nfts = () => page.getByRole('region', { name: 'Your positions', exact: true })
   async function refresh() {
     const button = nfts().getByRole('button', { name: 'Refresh', exact: true })
     await expect(button).toBeEnabled()
@@ -79,7 +79,7 @@ test('the built website creates, enters, refunds, transfers, settles and claims 
   }
   async function enter(quantities: number[]) {
     await page.getByRole('button', { name: 'By range', exact: true }).click()
-    const counts = page.getByRole('region', { name: 'NFT counts', exact: true }).getByRole('textbox')
+    const counts = page.getByRole('region', { name: 'Position counts', exact: true }).getByRole('textbox')
     await expect(counts).toHaveCount(3)
     for (let index = 0; index < quantities.length; index++) await counts.nth(index).fill(String(quantities[index]))
     const receipt = await transact(page.getByRole('button', { name: 'Review entry', exact: true }), 'Enter market')
@@ -102,21 +102,21 @@ test('the built website creates, enters, refunds, transfers, settles and claims 
     await enter([2, 2, 2])
     await expect(nfts().getByText(/^6 owned \| 6 shown/)).toBeVisible()
 
-    await nfts().getByRole('checkbox', { name: 'Select NFT #1000000001', exact: true }).check()
+    await nfts().getByRole('checkbox', { name: 'Select position #1000000001', exact: true }).check()
     await transact(nfts().getByRole('button', { name: 'Review refund', exact: true }), 'Refund one position')
     await expect(nfts().getByText(/^5 owned \| 5 shown/)).toBeVisible()
-    await expect(nfts().getByRole('checkbox', { name: 'Select NFT #1000000001', exact: true })).toHaveCount(0)
+    await expect(nfts().getByRole('checkbox', { name: 'Select position #1000000001', exact: true })).toHaveCount(0)
     const afterRefund = await snapshot()
     expect(afterRefund.market.potWei).toBe('500000000000000')
 
-    await nfts().getByLabel('Actions for NFT #3000000002', { exact: true }).click()
+    await nfts().getByLabel('Actions for position #3000000002', { exact: true }).click()
     await nfts().getByRole('menuitem', { name: 'Transfer', exact: true }).click()
     await page.getByLabel('Transfer recipient', { exact: true }).fill(fork.accounts[1])
     await transact(nfts().getByRole('button', { name: 'Review transfer', exact: true }), 'Transfer position')
     await expect(nfts().getByText(/^4 owned \| 4 shown/)).toBeVisible()
     await wallet.select(fork.accounts[1])
     await expect(nfts().getByText(/^1 owned \| 1 shown/)).toBeVisible()
-    await expect(nfts().getByRole('checkbox', { name: 'Select NFT #3000000002', exact: true })).toBeVisible()
+    await expect(nfts().getByRole('checkbox', { name: 'Select position #3000000002', exact: true })).toBeVisible()
     await wallet.select(fork.accounts[0])
     await expect(nfts().getByText(/^4 owned \| 4 shown/)).toBeVisible()
 
@@ -164,7 +164,7 @@ test('the built website creates, enters, refunds, transfers, settles and claims 
     await page.setViewportSize({ width: 1280, height: 900 })
     await nfts().getByRole('button', { name: 'Select shown', exact: true }).click()
     await transact(nfts().getByRole('button', { name: 'Review claim payout', exact: true }), 'Claim payout and burn positions')
-    await expect(nfts().getByText('You do not own any NFTs in this game.', { exact: true })).toBeVisible()
+    await expect(nfts().getByText('You do not own any positions in this game.', { exact: true })).toBeVisible()
     const settled = await snapshot()
     expect(settled.market.ratifiedScorecardId).toBe(proposal.scorecardId)
     expect(settled.market.commitmentsFulfilled).toBe(true)
@@ -185,7 +185,7 @@ test('the built website creates, enters, refunds, transfers, settles and claims 
     await refresh()
     await nfts().getByRole('button', { name: 'Select shown', exact: true }).click()
     await transact(nfts().getByRole('button', { name: 'Review refund', exact: true }), 'Refund no-contest positions')
-    await expect(nfts().getByText('You do not own any NFTs in this game.', { exact: true })).toBeVisible()
+    await expect(nfts().getByText('You do not own any positions in this game.', { exact: true })).toBeVisible()
     const refunded = await snapshot()
     expect(refunded.market.noContestTriggered).toBe(true)
     expect(refunded.market.potWei).toBe('0')
