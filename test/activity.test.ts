@@ -18,7 +18,7 @@ const transfer = (from: Address, to: Address, tierId: number, serial: number, bl
 })
 
 describe('readActivity', () => {
-  it('reads entries and exits newest first, ignores holder transfers and pages by block', async () => {
+  it('reads entries and exits newest first, ignores holder transfers and reads bounded windows', async () => {
     const logs = [
       transfer(zeroAddress, alice, 2, 1, head - 10n, 1, 0), transfer(zeroAddress, alice, 2, 2, head - 10n, 1, 1), transfer(zeroAddress, alice, 3, 3, head - 10n, 1, 2),
       transfer(alice, hook, 2, 1, head - 5n, 2, 0),

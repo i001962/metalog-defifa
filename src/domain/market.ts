@@ -5,6 +5,9 @@ type RangeConfiguration =
   | { rangeCount: number; rangeWidth: number; rangeBoundaries?: never }
   | { rangeBoundaries: number[]; rangeCount?: never; rangeWidth?: never }
 
+/** Smallest price per position a new market may set. Existing games keep whatever price they launched with. */
+export const MIN_NEW_UNIT_PRICE_WEI = 10n ** 15n
+
 export type MarketDefinition = {
   schemaVersion: 1
   settlement: 'defifa-scorecard'

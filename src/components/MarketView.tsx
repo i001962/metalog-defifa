@@ -70,7 +70,7 @@ export function MarketView({ chainId, projectId }: { chainId: number; projectId:
   const tabs: { id: Tab; label: string; count?: string }[] = [
     { id: 'view', label: 'Contribute' },
     { id: 'crowd', label: 'Crowd', count: distribution.totalSupply },
-    { id: 'nfts', label: 'Your NFTs', count: address && lifecycle.account?.toLowerCase() === address.toLowerCase() ? lifecycle.inventory.totalOwned : undefined },
+    { id: 'nfts', label: 'Your position', count: address && lifecycle.account?.toLowerCase() === address.toLowerCase() ? lifecycle.inventory.totalOwned : undefined },
     { id: 'results', label: 'Results', count: lifecycle.scorecards.length ? String(lifecycle.scorecards.length) : undefined },
     { id: 'rules', label: 'Rules' },
   ]
@@ -101,7 +101,7 @@ export function MarketView({ chainId, projectId }: { chainId: number; projectId:
     <div role="tabpanel" id="panel-view" aria-labelledby="tab-view" hidden={shown !== 'view'}>
       <ForecastEditor key={`${chainId}:${projectId}`} definition={market.definition} market={market} current={current} onSubmitted={refresh} crowd={supplies} />
     </div>
-    <div role="tabpanel" id="panel-crowd" aria-labelledby="tab-crowd" hidden={shown !== 'crowd'}>
+    <div role="tabpanel" id="panel-crowd" className="crowd-layout" aria-labelledby="tab-crowd" hidden={shown !== 'crowd'}>
       <section aria-labelledby="crowd-heading">
         <div className="row"><h2 id="crowd-heading">Stake-weighted positions</h2><div className="inline">
           <a href={`/api/markets/${chainId}/${projectId}`}>JSON</a>
@@ -119,8 +119,8 @@ export function MarketView({ chainId, projectId }: { chainId: number; projectId:
             <td>{distribution.probabilities ? `${(distribution.probabilities[index] * 100).toFixed(2)}%` : '—'}</td>
             {data.ratifiedPayoutShares && <td>{(data.ratifiedPayoutShares[index] * 100).toFixed(2)}%</td>}</tr>)}
         </tbody></table></div>
-        <Activity market={market} active={shown === 'crowd'} />
       </section>
+      <Activity market={market} active={shown === 'crowd'} />
     </div>
     <MarketLifecycle key={`play:${chainId}:${projectId}`} lifecycle={lifecycle} current={current}
       panel={shown === 'nfts' || shown === 'results' ? shown : null}

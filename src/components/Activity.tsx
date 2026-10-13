@@ -35,12 +35,12 @@ export function Activity({ market, active }: { market: MarketSnapshot; active: b
   const { hasNextPage, isFetching, fetchNextPage } = query
   // Quiet stretches return empty pages; keep reading back a little before asking.
   useEffect(() => {
-    if (active && pages && pages < 8 && !events.length && hasNextPage && !isFetching) void fetchNextPage()
+    if (active && pages && pages < 30 && !events.length && hasNextPage && !isFetching) void fetchNextPage()
   }, [active, pages, events.length, hasNextPage, isFetching, fetchNextPage])
   return <section aria-labelledby="activity-heading" className="activity">
     <h3 id="activity-heading">Activity</h3>
     {query.error && <p className="error" role="alert">{query.error.message} <button type="button" onClick={() => void query.refetch()}>Retry</button></p>}
-    {query.isPending && active && <p className="hint" role="status">Reading activity…</p>}
+    {active && !events.length && (query.isPending || isFetching) && <p className="hint" role="status">Reading activity…</p>}
     <ol className="activity-feed">
       {events.map(event => <ActivityRow key={`${event.transactionHash}:${event.kind}`} event={event} market={market} explorer={explorer} />)}
     </ol>

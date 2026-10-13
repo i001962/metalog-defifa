@@ -129,7 +129,7 @@ export function ForecastEditor({ definition, market, current = true, onSubmitted
         coefficients={displayedCurve} crowd={crowd} reference={manual} onChange={manual ? undefined : changeCurve}
           onPick={manual ? tierId => document.querySelector<HTMLInputElement>(`input[data-tier="${tierId}"]`)?.select() : undefined}
         readOnly={!model.preview && (!manual || !manualCounts)} />
-      {tablePreview && <details className="positions"><summary><h3>Positions ({tablePreview.allocation.count}){!model.preview && <small> | Last valid preview</small>}</h3></summary>
+      {tablePreview && <div className="positions"><h3>Positions ({tablePreview.allocation.count}){!model.preview && <small> | Last valid preview</small>}</h3>
         <div className="positions-columns" role="region" aria-label="Positions">
           {[0, positionColumnSize].map((offset, column) => <table key={column} aria-label={`Positions, ${column === 0 ? 'first' : 'second'} half`}>
             <thead><tr><th>Range</th><th>{manual ? 'Reference curve' : 'Your curve'}</th><th>NFTs</th><th>Your positions</th></tr></thead><tbody>
@@ -143,7 +143,7 @@ export function ForecastEditor({ definition, market, current = true, onSubmitted
             </tbody>
           </table>)}
         </div>
-      </details>}
+      </div>}
     </div>
     <div className="ticket">
       <h2 id="your-view">Your view</h2>

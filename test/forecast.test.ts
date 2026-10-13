@@ -16,7 +16,7 @@ describe('forecast data and payment boundary', () => {
   it('exports original probability and rounded holdings as different datasets', () => {
     const preview = forecastPreview({ market: EXAMPLE_MARKET, coefficients: [0, 1], positions: 3 })
     expect(preview.kind).toBe('draft')
-    expect(preview.payment.valueWei).toBe('3000000000000')
+    expect(preview.payment.valueWei).toBe('3000000000000000')
     expect(preview.allocation.quantities.reduce((sum, n) => sum + n, 0)).toBe(3)
     expect(preview.allocation.actualProbabilities).not.toEqual(preview.allocation.probabilities)
     expect(preview.tradingDistribution).toBeNull()
@@ -32,7 +32,7 @@ describe('forecast data and payment boundary', () => {
     const logistic = (x: number) => 1 / (1 + Math.exp(-x))
     expect(preview.allocation.probabilities[2]).toBeCloseTo(logistic(1.25) - logistic(-1.25), 14)
     expect(preview.allocation.count).toBe(20)
-    expect(preview.payment.valueWei).toBe('20000000000000')
+    expect(preview.payment.valueWei).toBe('20000000000000000')
     const response = await POST(new Request('http://localhost/api/preview', { method: 'POST', body: JSON.stringify(payload) }))
     expect(response.status).toBe(200)
     expect(await response.json()).toEqual(preview)
@@ -55,7 +55,7 @@ describe('forecast data and payment boundary', () => {
       expect(probability).toBeCloseTo(cumulative[index + 1] - cumulative[index], 14)
     })
     expect(preview.allocation.quantities).toEqual([1, 26, 23, 12, 33, 5])
-    expect(preview.payment.valueWei).toBe('100000000000000')
+    expect(preview.payment.valueWei).toBe('100000000000000000')
 
     const manual = { market, coefficients: [0, 1], quantities: [2, 0, 3, 0, 0, 5] }
     expect(forecastPreview(manual).allocation).toMatchObject({
@@ -81,7 +81,7 @@ describe('forecast data and payment boundary', () => {
     const payload = { market, coefficients: [0, 1], quantities: [7, 0, 3] }
     const preview = forecastPreview(payload)
     expect(preview.allocation).toMatchObject({ mode: 'manual', quantities: [7, 0, 3], actualProbabilities: [.7, 0, .3], count: 10 })
-    expect(preview.payment.valueWei).toBe('10000000000000')
+    expect(preview.payment.valueWei).toBe('10000000000000000')
     expect(preview.distribution.coefficients).toEqual([0, 1, 0, 0, 0, 0])
     expect(forecastPreview({ ...payload, positions: 10 })).toEqual(preview)
     expect(() => forecastPreview({ ...payload, positions: 9 })).toThrow('does not match')

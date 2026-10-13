@@ -19,7 +19,6 @@ export type ActivityPage = {
   complete: boolean
   nextCursor: string | null
 }
-const MAX_EVENTS = 20
 const MAX_REQUESTS = 4
 
 type Transfer = { from: Address; to: Address; tokenId: bigint }
@@ -39,14 +38,19 @@ export async function readActivity(client: PublicClient, market: MarketSnapshot,
   const event = getAbiItem({ abi: DEFIFA_ABI.DefifaHook, name: 'Transfer' })
   if (!event || event.type !== 'event') throw new Error('The transfer event ABI is unavailable.')
   const transfers = new Map<Hex, { blockNumber: bigint; timestamp?: bigint; logs: Transfer[] }>()
-  for (let request = 0; request < MAX_REQUESTS && end >= first && transfers.size < MAX_EVENTS; request++) {
-    const start = end - first + 1n > MAX_LOG_BLOCKS ? end - MAX_LOG_BLOCKS + 1n : first
-    const rawLogs = await client.getLogs({ address: market.hook, event, fromBlock: start, toBlock: end, strict: true })
+  // Windows are read in parallel (the shared client paces requests) and processed newest first.
+  const windows: { start: bigint; end: bigint }[] = []
+  for (; windows.length < MAX_REQUESTS && end >= first; end = windows.at(-1)!.start - 1n) {
+    windows.push({ start: end - first + 1n > MAX_LOG_BLOCKS ? end - MAX_LOG_BLOCKS + 1n : first, end })
+  }
+  const results = await Promise.all(windows.map(window => client.getLogs({ address: market.hook, event, fromBlock: window.start, toBlock: window.end, strict: true })))
+  for (const [index, rawLogs] of results.entries()) {
+    const { start, end: windowEnd } = windows[index]
     const logs = parseEventLogs({ abi: DEFIFA_ABI.DefifaHook, logs: rawLogs, eventName: 'Transfer', strict: true })
     if (logs.length !== rawLogs.length) throw new Error('The activity response contains invalid transfer logs.')
     for (const log of logs.toReversed()) {
       if (log.removed || log.blockNumber === null || !log.transactionHash || !sameAddress(log.address, market.hook)
-        || log.blockNumber < start || log.blockNumber > end) throw new Error('The activity logs do not match the requested history.')
+        || log.blockNumber < start || log.blockNumber > windowEnd) throw new Error('The activity logs do not match the requested history.')
       const args = log.args as Transfer
       if (!sameAddress(args.from, zeroAddress) && !sameAddress(args.to, zeroAddress)) continue
       // Center logs carry blockTimestamp; other providers fall back to one block read per block.
@@ -54,7 +58,6 @@ export async function readActivity(client: PublicClient, market: MarketSnapshot,
       item.logs.push(args)
       transfers.set(log.transactionHash, item)
     }
-    end = start - 1n
   }
   // ponytail: a page ends on a window boundary, so one transaction is never split across pages.
   const blocks = new Map<bigint, number>()

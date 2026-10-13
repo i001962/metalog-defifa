@@ -2,8 +2,8 @@
 
 import { useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { parseEther } from 'viem'
-import { parseDefaultDelegate, validateMarket } from '@/domain/market'
+import { formatEther, parseEther } from 'viem'
+import { MIN_NEW_UNIT_PRICE_WEI, parseDefaultDelegate, validateMarket } from '@/domain/market'
 import { createRanges, createCustomRanges, parseRangeBoundaries, parseRangeBoundary, redistributeRangeBoundaries, rangeBoundaryIssues, DEFAULT_RANGE_COUNT, DEFAULT_RANGE_WIDTH, MIN_RANGE_COUNT, MAX_RANGE_COUNT, MIN_RANGE_WIDTH, MAX_RANGE_WIDTH, type RangeBin } from '@/domain/ranges'
 import { SUPPORTED_CHAINS } from '@/lib/wallet'
 import { downloadJson } from '@/lib/forecast'
@@ -53,7 +53,7 @@ export function CreateMarket({ now }: { now: number }) {
   const [timePreset, setTimePreset] = useState('custom')
   const [observationError, setObservationError] = useState('')
   const [lastRanges, setLastRanges] = useState<Partial<Record<RangeMode, RangeBin[]>>>(() => ({ simple: createRanges() }))
-  const [price, setPrice] = useState('0.000001')
+  const [price, setPrice] = useState('0.001')
   const [chainId, setChainId] = useState(8453)
   const isTestnet = SUPPORTED_CHAINS.some(chain => chain.id === chainId && 'testnet' in chain && chain.testnet)
   const [busy, setBusy] = useState(false)
@@ -84,6 +84,7 @@ export function CreateMarket({ now }: { now: number }) {
   const draft = useMemo(() => {
     try {
       if (!/^(?:\d+(?:\.\d{0,18})?|\.\d{1,18})$/.test(price)) throw new Error('Enter an ETH price with up to 18 decimal places.')
+      if (parseEther(price) < MIN_NEW_UNIT_PRICE_WEI) throw new Error(`Set at least ${formatEther(MIN_NEW_UNIT_PRICE_WEI)} ETH per position.`)
       if (rangeError || !rangeDraft.configuration) throw new Error(rangeError || 'Check the ranges.')
       if (delegateDraft.error) throw new Error(delegateDraft.error)
       const definition = validateMarket({ schemaVersion: 1, settlement: 'defifa-scorecard', prompt, source, resolutionRule: rule,

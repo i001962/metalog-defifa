@@ -11,6 +11,6 @@ export const EXAMPLE_MARKET: MarketDefinition = {
   resolvesAt: Date.UTC(2026, 9, 11) / 1000,
   rangeCount: 21,
   rangeWidth: 1,
-  unitPriceWei: '1000000000000',
+  unitPriceWei: '1000000000000000',
   settlement: 'defifa-scorecard',
 }
