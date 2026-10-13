@@ -334,3 +334,8 @@ section.forecast[aria-labelledby="your-view"] { margin-top: 0; }
 .ticket .positions table { font-size: 13px; }
 .ticket .positions th, .ticket .positions td { padding: 4px 6px; }
 .distribution-order::before { background: #2a234280; }
+.forecast[data-browsing="true"] { grid-template-columns: 1fr; }
+.forecast[data-browsing="true"] .forecast-side { display: none; }
+.market-below { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 380px); gap: 28px 40px; align-items: start; margin-top: 28px; }
+.market-below .crowd-table { margin-top: 0; }
+@media (max-width: 900px) { .market-below { grid-template-columns: 1fr; } }

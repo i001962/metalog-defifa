@@ -14,14 +14,13 @@ import { PositionChart } from './PositionChart'
 const COEFFICIENT_LABELS = ['Median', 'Base spread', 'Tail asymmetry', 'Middle spread', 'Shape asymmetry', 'Tail spread']
 type EditorMode = 'moments' | 'coefficients' | 'ranges'
 
-export function ForecastEditor({ definition, market, current = true, onSubmitted, crowd, payout, below, side }: {
+export function ForecastEditor({ definition, market, current = true, onSubmitted, crowd, payout, below }: {
   definition: MarketDefinition
   /** Live circulating supply per range, drawn behind your curve. */
   crowd?: number[]
   payout?: number[] | null
-  /** Shown under the chart, and under the checkout. */
+  /** Shown under the chart. */
   below?: ReactNode
-  side?: ReactNode
   market?: MarketSnapshot
   current?: boolean
   onSubmitted?: () => void
@@ -128,7 +127,7 @@ export function ForecastEditor({ definition, market, current = true, onSubmitted
   const closed = market && market.stage !== 'entry'
   // After entry, the chart shows the crowd and payout; the checkout stays mounted so a draft survives.
   const browsing = Boolean(market && closed && market.stage !== 'countdown')
-  return <section aria-labelledby="your-view" className="forecast">
+  return <section aria-labelledby="your-view" className="forecast" data-browsing={browsing}>
     <div className="forecast-canvas">
       <PositionChart ranges={ranges} quantities={(manual && manualCounts) || tablePreview?.allocation.quantities || []}
         coefficients={displayedCurve} crowd={crowd} payout={payout} mine={!browsing} reference={manual} onChange={manual ? undefined : changeCurve}
@@ -203,7 +202,6 @@ export function ForecastEditor({ definition, market, current = true, onSubmitted
       {!market && <p className="hint">Example only. No positions are minted.</p>}
       {error && <p className="error" role="alert">{error}</p>}
     </div>
-    {side}
     </div>
   </section>
 }

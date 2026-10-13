@@ -45,7 +45,7 @@ export function Activity({ market, active }: { market: MarketSnapshot; active: b
       {events.map(event => <ActivityRow key={`${event.transactionHash}:${event.kind}`} event={event} market={market} explorer={explorer} />)}
     </ol>
     {query.data && !events.length && !query.hasNextPage && <p className="hint">No entries or exits yet.</p>}
-    {query.hasNextPage && <button type="button" disabled={query.isFetchingNextPage} onClick={() => void query.fetchNextPage()}>
+    {query.hasNextPage && !(isFetching && !events.length) && <button type="button" disabled={query.isFetchingNextPage} onClick={() => void query.fetchNextPage()}>
       {query.isFetchingNextPage ? 'Reading…' : events.length ? 'Older activity' : 'Check earlier blocks'}</button>}
   </section>
 }

@@ -102,6 +102,7 @@ export function MarketView({ chainId, projectId }: { chainId: number; projectId:
         below={<>
           {lifecycle.cashOutMode && <div className="actions"><button type="button" className="primary" onClick={() => setTab('nfts')}>
             {lifecycle.cashOutMode === 'cash-out' ? 'Claim payout' : 'Refund'} with your NFTs</button></div>}
+          <div className="market-below">
           <section aria-labelledby="crowd-heading" className="crowd-table">
             <div className="row"><h3 id="crowd-heading">Crowd</h3><div className="inline">
               <a href={`/api/markets/${chainId}/${projectId}`}>JSON</a>
@@ -115,8 +116,9 @@ export function MarketView({ chainId, projectId }: { chainId: number; projectId:
                 {owned && <td>{mine[range.tierId] ?? 0}</td>}</tr>)}
             </tbody></table></div>
           </section>
-        </>}
-        side={<Activity market={market} active={shown === 'market'} />} />
+          <Activity market={market} active={shown === 'market'} />
+          </div>
+        </>} />
     </div>
     <MarketLifecycle key={`play:${chainId}:${projectId}`} lifecycle={lifecycle} current={current}
       panel={shown === 'nfts' || shown === 'results' ? shown : null}
