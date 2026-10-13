@@ -68,6 +68,10 @@ section[aria-labelledby="your-view"] { margin-top: 32px; }
 .forecast-moments input, .stake-input, .project-id-input, .range-boundaries input { width: 8rem; }
 .coefficient-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 20px; max-width: 42rem; }
 .quantity-input { width: 4rem; padding: 3px 7px; text-align: right; }
+/* Result payouts: the field leads each range, in a tight column. */
+.payout-editor { display: grid; gap: 6px; margin: 4px 0 12px; }
+.payout-editor label { display: grid; grid-template-columns: 4rem 1.2em auto; align-items: center; gap: 4px; justify-content: start; font-size: 14px; }
+.payout-editor .quantity-input { margin: 0; }
 .positions { margin-top: 18px; }
 .positions h3 { margin-bottom: 8px; }
 .positions-table { max-height: 18rem; overflow: auto; overscroll-behavior: contain; }

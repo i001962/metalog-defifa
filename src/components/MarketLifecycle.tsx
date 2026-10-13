@@ -225,10 +225,11 @@ export function MarketLifecycle({ lifecycle, panel, current, loading, error, onR
         }}><option value="">Choose a range to assign 100%</option>
           {market.ranges.filter(range => BigInt(market.tiers.find(tier => tier.tierId === range.tierId)?.supply ?? '0') > 0n).map(range => <option key={range.tierId} value={range.tierId}>{range.label}</option>)}
         </select></label><p className="hint">Choosing a range replaces the draft with 100% for that range. Switching views keeps your draft.</p></>
-        : <div className="table-wrap"><table><thead><tr><th>Range</th><th>Proposed payout (%)</th></tr></thead><tbody>
-          {market.ranges.map((range, index) => <tr key={range.tierId}><td>{range.label}</td><td><input className="quantity-input" inputMode="decimal" aria-label={`Proposed payout for ${range.label} (%)`}
-            value={percentages[index]} onChange={event => { setPercentages(previous => previous.map((value, i) => i === index ? event.target.value : value)); setScoreTouched(true) }} /></td></tr>)}
-        </tbody></table></div>}
+        : <div className="payout-editor">
+          {market.ranges.map((range, index) => <label key={range.tierId}><input className="quantity-input" inputMode="decimal" aria-label={`Proposed payout for ${range.label} (%)`}
+            value={percentages[index]} onChange={event => { setPercentages(previous => previous.map((value, i) => i === index ? event.target.value : value)); setScoreTouched(true) }} />
+            <span className="hint">%</span><span>{range.label}</span></label>)}
+        </div>}
         {scoreDraft.weights && <div className="table-wrap"><table aria-label="Proposed payout summary"><thead><tr><th>Range</th><th>Proposed payout</th></tr></thead><tbody>
           {scoreDraft.weights.map(item => <tr key={item.tierId}><td>{market.ranges.find(range => range.tierId === item.tierId)?.label}</td><td>{formatUnits(BigInt(item.weight), 16)}%</td></tr>)}
         </tbody></table></div>}
