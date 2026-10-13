@@ -33,7 +33,7 @@ export function StageLamps({ market }: { market: MarketSnapshot }) {
     { label: market.stage === 'refund' ? 'Refunds' : 'Entry', date: `until ${shortTime(entryClosesAt)}`, countdown: market.stage === 'entry' ? `closes in ${remaining(entryClosesAt - now)}` : '' },
     { label: 'Observation', date: `until ${shortTime(resolvesAt)}`, countdown: market.stage === 'trading' ? `ends in ${remaining(resolvesAt - now)}` : '' },
     { label: 'Results', date: `from ${shortTime(resolvesAt)}`, countdown: '' },
-    { label: market.stage === 'no-contest' ? 'No contest' : 'Payouts', date: '', countdown: '' },
+    { label: market.stage === 'no-contest' ? 'No contest' : 'Claims', date: '', countdown: '' },
   ]
   return <ol className="lamps" aria-label="Game stages" data-stage={market.stage}>
     {lamps.map((lamp, index) => <li key={index} className="lamp" data-state={index < step ? 'past' : index === step ? 'current' : 'future'}
