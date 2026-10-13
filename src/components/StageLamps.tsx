@@ -95,9 +95,11 @@ export function StageLamps({ market, positions, liveStage, onPreview }: {
       <svg viewBox="0 0 26 26" aria-hidden="true"><circle cx="13" cy="13" r="9" /></svg>
       <small>{lamp.date}</small>
       {gaps[index] && <span className="lamp-gap"><span>{gaps[index]}</span></span>}
-      {progress?.segment === index && <span className="lamp-progress" role="progressbar" aria-label={index === 0 ? 'Entry progress' : 'Game progress'}
-        aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress.fraction * 100)}>
-        <span style={{ width: `${progress.fraction * 100}%` }} /></span>}
+      {/* Finished segments stay filled; the running one grows from its lamp toward the next. */}
+      {index < 3 && (index < step || progress?.segment === index) && <span className="lamp-progress" data-segment={index}
+        {...progress?.segment === index ? { role: 'progressbar', 'aria-label': index === 0 ? 'Entry progress' : 'Game progress',
+          'aria-valuemin': 0, 'aria-valuemax': 100, 'aria-valuenow': Math.round(progress.fraction * 100) } : { 'aria-hidden': true }}>
+        <span style={{ width: `${(progress?.segment === index ? progress.fraction : 1) * 100}%` }} /></span>}
     </li>)}
   </ol>
   </div>
