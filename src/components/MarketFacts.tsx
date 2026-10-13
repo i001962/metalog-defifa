@@ -2,7 +2,7 @@ import { marketRanges, type MarketDefinition } from '@/domain/market'
 import { formatPercentage, RANGE_DECIMAL_PLACES } from '@/domain/ranges'
 
 export function utcTime(seconds: number) {
-  return new Intl.DateTimeFormat('en', { timeZone: 'UTC', year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }).format(seconds * 1000) + ' UTC'
+  return new Intl.DateTimeFormat('en', { timeZone: 'UTC', year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(seconds * 1000) + ' UTC'
 }
 
 export function MarketFacts({ definition, open }: { definition: MarketDefinition; open?: boolean }) {

@@ -30,8 +30,11 @@ test('crowd activity lists entries and exits; an opened entry shows its checked 
   const entryReads: URL[] = []
   await page.route('**/api/markets/8453/27/play?*', route => route.fulfill({ json: market }))
   await page.route('**/api/markets/8453/27/activity?*', route => {
-    expect(new URL(route.request().url()).searchParams.get('blockNumber')).toBe('100')
-    return route.fulfill({ json: activity })
+    const url = new URL(route.request().url())
+    expect(url.searchParams.get('blockNumber')).toBe('100')
+    // Two block windows: the older one loads on its own, with no button to press.
+    return route.fulfill({ json: url.searchParams.get('cursor') === '92'
+      ? { ...activity, events: activity.events.slice(1) } : { ...activity, complete: false, nextCursor: '92', events: activity.events.slice(0, 1) } })
   })
   await page.route('**/api/markets/8453/27/entries?*', route => {
     const url = new URL(route.request().url()); entryReads.push(url)
@@ -47,6 +50,7 @@ test('crowd activity lists entries and exits; an opened entry shows its checked 
   const feed = page.getByRole('region', { name: 'Activity', exact: true })
   const rows = feed.getByRole('listitem')
   await expect(rows).toHaveCount(3)
+  await expect(feed.getByRole('button', { name: /activity|earlier/i })).toHaveCount(0)
   await expect(rows.nth(0)).toContainText('exited with 1 position')
   await expect(rows.nth(1)).toContainText('entered with 4 positions')
   expect(entryReads).toHaveLength(0)

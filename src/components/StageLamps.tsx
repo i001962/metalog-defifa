@@ -9,7 +9,7 @@ import { ChainIcon } from './ChainIcon'
 const STEP: Record<MarketSnapshot['stage'], number> = { countdown: -1, entry: 0, refund: 0, trading: 1, settlement: 2, complete: 3, 'no-contest': 3 }
 
 export function shortTime(seconds: number) {
-  return new Intl.DateTimeFormat('en', { timeZone: 'UTC', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }).format(seconds * 1000) + ' UTC'
+  return new Intl.DateTimeFormat('en', { timeZone: 'UTC', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(seconds * 1000) + ' UTC'
 }
 
 /** Whole days, hours and minutes, skipping zero parts. */

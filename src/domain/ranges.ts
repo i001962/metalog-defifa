@@ -234,7 +234,11 @@ export function shareAtOrAbove(ranges: readonly RangeBin[], shares: readonly num
 export function curveFromPositions(ranges: readonly RangeBin[], counts: readonly number[]): Coefficients | null {
   const total = counts.reduce((sum, count) => sum + count, 0)
   if (!(total > 0)) return null
-  return fitMetalog(rangeEdges(ranges).map(edge => ({ p: 1 - shareAtOrAbove(ranges, counts, edge) / total, value: edge })))
+  const edges = rangeEdges(ranges)
+  const p = edges.map(edge => 1 - shareAtOrAbove(ranges, counts, edge) / total)
+  // Weight each edge by the bars beside it, so the busy middle is matched and the empty tails cannot pull it flat.
+  const slope = (index: number) => index < 0 || index >= edges.length - 1 ? 0 : (p[index + 1] - p[index]) / (edges[index + 1] - edges[index])
+  return fitMetalog(edges.map((value, index) => ({ p: p[index], value, weight: (slope(index - 1) + slope(index)) / 2 })))
 }
 
 /** Share at or above any value: exact at range edges, spread within a range by the fitted curve's shape. */

@@ -255,8 +255,8 @@ export function PositionChart({ ranges, quantities, coefficients, crowd, payout,
       </text>)}
       <text x={plotLeft + plotWidth / 2} y={HEIGHT - 6} textAnchor="middle">Outcome (%)</text>
     </svg>
-    {/* The editing hint lives beside the controls; chart states overlay the chart so edits never shift the page. */}
-    {mine && (submitted || readOnly) && <p className="hint chart-note">{instruction}</p>}
+    {/* The editing hint lives beside the controls; chart states overlay the chart so edits never shift the page, and give way to the answer line. */}
+    {mine && (submitted || readOnly) && (answer === null || edge === null) && <p className="hint chart-note">{instruction}</p>}
     {mine && callout && selected && <div className="chart-callout" aria-hidden="true" style={{
       left: `${Math.min(88, Math.max(12, barCenter(selected) / width * 100))}%`,
       top: `${Math.max(0, barTop(selected) / HEIGHT * 100)}%`,

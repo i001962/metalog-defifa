@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import type { MarketSnapshot } from '@/lib/defifa'
 import type { ActivityEvent, ActivityPage } from '@/lib/activity'
@@ -31,22 +31,28 @@ export function Activity({ market, active }: { market: MarketSnapshot; active: b
     getNextPageParam: last => last.nextCursor ?? undefined, staleTime: Infinity, refetchOnWindowFocus: false,
   })
   const events = query.data?.pages.flatMap(page => page.events) ?? []
-  const pages = query.data?.pages.length ?? 0
   const { hasNextPage, isFetching, fetchNextPage } = query
-  // Quiet stretches return empty pages; keep reading back a little before asking.
+  // Pages are block windows, so keep reading back while the end of the list is near the screen.
+  const end = useRef<HTMLDivElement>(null)
+  const [near, setNear] = useState(false)
   useEffect(() => {
-    if (active && pages && pages < 30 && !events.length && hasNextPage && !isFetching) void fetchNextPage()
-  }, [active, pages, events.length, hasNextPage, isFetching, fetchNextPage])
+    if (!end.current) return
+    const observer = new IntersectionObserver(([entry]) => setNear(entry.isIntersecting), { rootMargin: '600px 0px' })
+    observer.observe(end.current)
+    return () => observer.disconnect()
+  }, [])
+  useEffect(() => {
+    if (active && near && hasNextPage && !isFetching && !query.error) void fetchNextPage()
+  }, [active, near, hasNextPage, isFetching, fetchNextPage, query.error])
   return <section aria-labelledby="activity-heading" className="activity">
     <h3 id="activity-heading">Activity</h3>
-    {query.error && <p className="error" role="alert">{query.error.message} <button type="button" onClick={() => void query.refetch()}>Retry</button></p>}
-    {active && !events.length && (query.isPending || isFetching) && <p className="hint" role="status">Reading activity…</p>}
+    {query.error && <p className="error" role="alert">{query.error.message} <button type="button" onClick={() => void (query.data ? fetchNextPage() : query.refetch())}>Retry</button></p>}
     <ol className="activity-feed">
       {events.map(event => <ActivityRow key={`${event.transactionHash}:${event.kind}`} event={event} market={market} explorer={explorer} />)}
     </ol>
+    <div ref={end} />
+    {active && isFetching && <p className="hint" role="status">Reading activity…</p>}
     {query.data && !events.length && !query.hasNextPage && <p className="hint">No entries or exits yet.</p>}
-    {query.hasNextPage && !(isFetching && !events.length) && <button type="button" disabled={query.isFetchingNextPage} onClick={() => void query.fetchNextPage()}>
-      {query.isFetchingNextPage ? 'Reading…' : events.length ? 'Older activity' : 'Check earlier blocks'}</button>}
   </section>
 }
 

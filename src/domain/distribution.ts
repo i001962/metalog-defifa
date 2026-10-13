@@ -139,15 +139,18 @@ export function densityBuckets(coefficients: Coefficients, count = 240, bounds?:
   return { low, high, buckets, visibleMass: previousCdf - lowerCdf, peak: Math.max(...buckets.map(bucket => bucket.density)) }
 }
 
-/** Least-squares metalog through (probability, value) points: 4 terms down to 2, the first that stays a valid curve. */
-export function fitMetalog(points: readonly { p: number; value: number }[]): Coefficients | null {
-  const usable = points.filter(point => point.p > 0 && point.p < 1 && Number.isFinite(point.value))
+/**
+ * Least-squares metalog through (probability, value) points: 4 terms down to 2, the first that stays a valid curve.
+ * A point's optional weight is the density there, so value misses count as the probability they move.
+ */
+export function fitMetalog(points: readonly { p: number; value: number; weight?: number }[]): Coefficients | null {
+  const usable = points.filter(point => point.p > 0 && point.p < 1 && Number.isFinite(point.value) && (point.weight ?? 1) > 0)
   for (let terms = Math.min(4, usable.length); terms >= 2; terms--) {
-    const rows = usable.map(({ p }) => {
+    const rows = usable.map(({ p, weight = 1 }) => {
       const z = p - 0.5, logit = Math.log(p) - Math.log1p(-p)
-      return [1, logit, z * logit, z, z * z, z * z * logit].slice(0, terms)
+      return [1, logit, z * logit, z, z * z, z * z * logit].slice(0, terms).map(term => term * weight)
     })
-    const solved = leastSquares(rows, usable.map(point => point.value))
+    const solved = leastSquares(rows, usable.map(point => point.value * (point.weight ?? 1)))
     if (!solved) continue
     try { return validateCoefficients(solved) } catch { /* try fewer terms */ }
   }
