@@ -184,12 +184,14 @@ export function PositionChart({ ranges, quantities, coefficients, crowd, payout,
       {crowdAll.map((position, index) => {
         const yours = mineShown[index]?.quantity ?? 0
         if (position.quantity === 0 && yours === 0) return null
-        const { range } = position, side = range.lower === null ? 'start' : range.upper === null ? 'end' : 'middle'
-        // Above the bar and the curve, and pinned inside the chart at the overflow edges.
+        const { range } = position
+        const label = `${percent(position.share)}${yourTotal > 0 ? ` → ${percent((position.quantity + yours) / (crowdTotal + yourTotal))}` : ''}`
+        // Centered above the bar and the curve; nudged inward only when it would run past the chart edge (about 8px per character).
         const curveTop = mine && range.lower !== null && range.upper !== null
           ? Math.max(0, ...(density?.buckets.filter(bucket => bucket.upper > range.lower! && bucket.lower < range.upper!).map(bucket => bucket.density) ?? [])) : 0
-        return <text key={`chance-${range.tierId}`} className="chart-chance" textAnchor={side}
-          x={side === 'start' ? column(range).left : side === 'end' ? column(range).right : barCenter(position)}
+        const half = label.length * 4
+        return <text key={`chance-${range.tierId}`} className="chart-chance" textAnchor="middle"
+          x={Math.min(width - RIGHT - half, Math.max(LEFT + half, barCenter(position)))}
           y={axis - Math.max(tallest(range, index), curveTop) / peak * plotHeight - 6}>
           {percent(position.share)}
           {/* The crowd's share once your order mints alongside it. */}
