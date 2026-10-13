@@ -11,15 +11,14 @@ import { useWallet } from '@/providers/Providers'
 import { ForecastEditor } from './ForecastEditor'
 import { MarketFacts } from './MarketFacts'
 import { MarketLifecycle } from './MarketLifecycle'
-import { CrowdChart } from './CrowdChart'
 import { Activity } from './Activity'
 import { StageLamps } from './StageLamps'
 import { ChainIcon } from './ChainIcon'
 import type { MarketSnapshot } from '@/lib/defifa'
 
-type Tab = 'view' | 'crowd' | 'nfts' | 'results' | 'rules'
+type Tab = 'market' | 'nfts' | 'results' | 'rules'
 /** The one panel that matters most in each stage. */
-const FOCUS: Record<MarketSnapshot['stage'], Tab> = { countdown: 'view', entry: 'view', refund: 'nfts', trading: 'crowd', settlement: 'results', complete: 'crowd', 'no-contest': 'nfts' }
+const FOCUS: Record<MarketSnapshot['stage'], Tab> = { countdown: 'market', entry: 'market', refund: 'nfts', trading: 'market', settlement: 'results', complete: 'market', 'no-contest': 'nfts' }
 
 export function MarketView({ chainId, projectId }: { chainId: number; projectId: string }) {
   const { address } = useWallet()
@@ -68,8 +67,7 @@ export function MarketView({ chainId, projectId }: { chainId: number; projectId:
   if (tab === null) setTab(focus)
   const shown = tab ?? focus
   const tabs: { id: Tab; label: string; count?: string }[] = [
-    { id: 'view', label: 'Contribute' },
-    { id: 'crowd', label: 'Crowd', count: distribution.totalSupply },
+    { id: 'market', label: 'Market', count: distribution.totalSupply },
     { id: 'nfts', label: 'Your position', count: address && lifecycle.account?.toLowerCase() === address.toLowerCase() ? lifecycle.inventory.totalOwned : undefined },
     { id: 'results', label: 'Results', count: lifecycle.scorecards.length ? String(lifecycle.scorecards.length) : undefined },
     { id: 'rules', label: 'Rules' },
@@ -98,29 +96,27 @@ export function MarketView({ chainId, projectId }: { chainId: number; projectId:
         {item.label}{item.count !== undefined && <span className="tab-count">{item.count}</span>}
       </button>)}
     </div>
-    <div role="tabpanel" id="panel-view" aria-labelledby="tab-view" hidden={shown !== 'view'}>
-      <ForecastEditor key={`${chainId}:${projectId}`} definition={market.definition} market={market} current={current} onSubmitted={refresh} crowd={supplies} />
-    </div>
-    <div role="tabpanel" id="panel-crowd" className="crowd-layout" aria-labelledby="tab-crowd" hidden={shown !== 'crowd'}>
-      <section aria-labelledby="crowd-heading">
-        <div className="row"><h2 id="crowd-heading">Stake-weighted positions</h2><div className="inline">
-          <a href={`/api/markets/${chainId}/${projectId}`}>JSON</a>
-          <a href={`/api/markets/${chainId}/${projectId}?format=sipmath`}>SIPmath</a>
-          <a href={`${chainForId(chainId).blockExplorers.default.url}/address/${market.hook}`} target="_blank" rel="noreferrer">Contract</a>
-        </div></div>
-        <div className="crowd-legend"><span className="legend-crowd">Crowd stake</span>
-          {data.ratifiedPayoutShares && <span className="legend-payout">Ratified payout</span>}
-          {owned && <span className="legend-mine">Your NFTs</span>}</div>
-        <CrowdChart ranges={market.ranges} supplies={supplies} payoutShares={data.ratifiedPayoutShares} mine={mine} />
-        {lifecycle.cashOutMode && <div className="actions"><button type="button" className="primary" onClick={() => setTab('nfts')}>
-          {lifecycle.cashOutMode === 'cash-out' ? 'Claim payout' : 'Refund'} with your NFTs</button></div>}
-        <div className="table-wrap crowd-table"><table><thead><tr><th>Range</th><th>Positions</th><th>Share</th>{data.ratifiedPayoutShares && <th>Payout</th>}</tr></thead><tbody>
-          {market.ranges.map((range, index) => <tr key={range.tierId}><td>{range.label}</td><td>{market.tiers[index].supply}</td>
-            <td>{distribution.probabilities ? `${(distribution.probabilities[index] * 100).toFixed(2)}%` : '—'}</td>
-            {data.ratifiedPayoutShares && <td>{(data.ratifiedPayoutShares[index] * 100).toFixed(2)}%</td>}</tr>)}
-        </tbody></table></div>
-      </section>
-      <Activity market={market} active={shown === 'crowd'} />
+    <div role="tabpanel" id="panel-market" aria-labelledby="tab-market" hidden={shown !== 'market'}>
+      <ForecastEditor key={`${chainId}:${projectId}`} definition={market.definition} market={market} current={current} onSubmitted={refresh}
+        crowd={supplies} payout={data.ratifiedPayoutShares}
+        below={<>
+          {lifecycle.cashOutMode && <div className="actions"><button type="button" className="primary" onClick={() => setTab('nfts')}>
+            {lifecycle.cashOutMode === 'cash-out' ? 'Claim payout' : 'Refund'} with your NFTs</button></div>}
+          <section aria-labelledby="crowd-heading" className="crowd-table">
+            <div className="row"><h3 id="crowd-heading">Crowd</h3><div className="inline">
+              <a href={`/api/markets/${chainId}/${projectId}`}>JSON</a>
+              <a href={`/api/markets/${chainId}/${projectId}?format=sipmath`}>SIPmath</a>
+              <a href={`${chainForId(chainId).blockExplorers.default.url}/address/${market.hook}`} target="_blank" rel="noreferrer">Contract</a>
+            </div></div>
+            <div className="table-wrap"><table><thead><tr><th>Range</th><th>Positions</th><th>Share</th>{data.ratifiedPayoutShares && <th>Payout</th>}{owned && <th>Yours</th>}</tr></thead><tbody>
+              {market.ranges.map((range, index) => <tr key={range.tierId}><td>{range.label}</td><td>{market.tiers[index].supply}</td>
+                <td>{distribution.probabilities ? `${(distribution.probabilities[index] * 100).toFixed(2)}%` : '—'}</td>
+                {data.ratifiedPayoutShares && <td>{(data.ratifiedPayoutShares[index] * 100).toFixed(2)}%</td>}
+                {owned && <td>{mine[range.tierId] ?? 0}</td>}</tr>)}
+            </tbody></table></div>
+          </section>
+        </>}
+        side={<Activity market={market} active={shown === 'market'} />} />
     </div>
     <MarketLifecycle key={`play:${chainId}:${projectId}`} lifecycle={lifecycle} current={current}
       panel={shown === 'nfts' || shown === 'results' ? shown : null}

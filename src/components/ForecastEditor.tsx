@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { formatEther } from 'viem'
 import { coefficientsFromMoments, parseCoefficientFields, type Coefficients } from '@/domain/distribution'
 import { marketRanges, type MarketDefinition } from '@/domain/market'
@@ -14,10 +14,14 @@ import { PositionChart } from './PositionChart'
 const COEFFICIENT_LABELS = ['Median', 'Base spread', 'Tail asymmetry', 'Middle spread', 'Shape asymmetry', 'Tail spread']
 type EditorMode = 'moments' | 'coefficients' | 'ranges'
 
-export function ForecastEditor({ definition, market, current = true, onSubmitted, crowd }: {
+export function ForecastEditor({ definition, market, current = true, onSubmitted, crowd, payout, below, side }: {
   definition: MarketDefinition
   /** Live circulating supply per range, drawn behind your curve. */
   crowd?: number[]
+  payout?: number[] | null
+  /** Shown under the chart, and under the checkout. */
+  below?: ReactNode
+  side?: ReactNode
   market?: MarketSnapshot
   current?: boolean
   onSubmitted?: () => void
@@ -78,7 +82,6 @@ export function ForecastEditor({ definition, market, current = true, onSubmitted
   if (model.preview && model !== lastValidModels[mode]) setLastValidModels({ ...lastValidModels, [mode]: model })
   const displayedModel = model.preview ? model : lastValidModels[mode]
   const tablePreview = displayedModel?.preview
-  const positionColumnSize = Math.ceil((tablePreview?.ranges.length ?? 0) / 2)
   function selectMode(next: EditorMode) {
     if (next === 'coefficients' && !expressiveInitialized) {
       setCoefficientFields(displayedCurve.map(String))
@@ -123,29 +126,18 @@ export function ForecastEditor({ definition, market, current = true, onSubmitted
     finally { setSubmitting(false) }
   }
   const closed = market && market.stage !== 'entry'
+  // After entry, the chart shows the crowd and payout; the checkout stays mounted so a draft survives.
+  const browsing = Boolean(market && closed && market.stage !== 'countdown')
   return <section aria-labelledby="your-view" className="forecast">
     <div className="forecast-canvas">
       <PositionChart ranges={ranges} quantities={(manual && manualCounts) || tablePreview?.allocation.quantities || []}
-        coefficients={displayedCurve} crowd={crowd} reference={manual} onChange={manual ? undefined : changeCurve}
+        coefficients={displayedCurve} crowd={crowd} payout={payout} mine={!browsing} reference={manual} onChange={manual ? undefined : changeCurve}
           onPick={manual ? tierId => document.querySelector<HTMLInputElement>(`input[data-tier="${tierId}"]`)?.select() : undefined}
         readOnly={!model.preview && (!manual || !manualCounts)} />
-      {tablePreview && <div className="positions"><h3>Positions ({tablePreview.allocation.count}){!model.preview && <small> | Last valid preview</small>}</h3>
-        <div className="positions-columns" role="region" aria-label="Positions">
-          {[0, positionColumnSize].map((offset, column) => <table key={column} aria-label={`Positions, ${column === 0 ? 'first' : 'second'} half`}>
-            <thead><tr><th>Range</th><th>{manual ? 'Reference curve' : 'Your curve'}</th><th>NFTs</th><th>Your positions</th></tr></thead><tbody>
-              {tablePreview.ranges.slice(offset, offset + positionColumnSize).map((range, row) => {
-                const index = offset + row
-                return <tr key={range.tierId}>
-                  <td>{range.label}</td><td>{(tablePreview.allocation.probabilities[index] * 100).toFixed(2)}%</td>
-                  <td>{tablePreview.allocation.quantities[index]}</td><td>{model.preview ? `${(model.preview.allocation.actualProbabilities[index] * 100).toFixed(2)}%` : '—'}</td>
-                </tr>
-              })}
-            </tbody>
-          </table>)}
-        </div>
-      </div>}
+      {below}
     </div>
-    <div className="ticket">
+    <div className="forecast-side">
+    <div className="ticket" hidden={browsing}>
       <h2 id="your-view">Your view</h2>
       <div className="forecast-controls">
         <div className="mode-toggle" role="group" aria-label="Curve controls">
@@ -191,6 +183,14 @@ export function ForecastEditor({ definition, market, current = true, onSubmitted
           {displayedModel.payment.remainderWei > 0n && <small>{formatEther(displayedModel.payment.remainderWei)} ETH stays in your wallet.</small>}
         </div>}
       </div>
+      {tablePreview && <div className="positions" role="region" aria-label="Positions">
+        <h3>Your order, {tablePreview.allocation.count} positions{!model.preview && <small> | Last valid preview</small>}</h3>
+        <table aria-label="Your order"><thead><tr><th>Range</th><th>{manual ? 'Reference' : 'Curve'}</th><th>NFTs</th></tr></thead><tbody>
+          {tablePreview.ranges.map((range, index) => tablePreview.allocation.quantities[index] > 0 && <tr key={range.tierId}>
+            <td>{range.label}</td><td>{(tablePreview.allocation.probabilities[index] * 100).toFixed(1)}%</td><td>{tablePreview.allocation.quantities[index]}</td>
+          </tr>)}
+        </tbody></table>
+      </div>}
       {model.error && <p id="forecast-error" className="error" role="alert">{model.error}</p>}
       <div className="actions ticket-actions">
         {market && <button className="primary" disabled={!current || !model.preview || Boolean(closed) || submitting || transactions.busy || transactions.hasPendingForMarket(market!)} onClick={submit}>
@@ -202,6 +202,8 @@ export function ForecastEditor({ definition, market, current = true, onSubmitted
       {current && closed && <p className="hint">{market.stage === 'countdown' ? 'Entry has not opened.' : 'Entry is closed.'}</p>}
       {!market && <p className="hint">Example only. No positions are minted.</p>}
       {error && <p className="error" role="alert">{error}</p>}
+    </div>
+    {side}
     </div>
   </section>
 }

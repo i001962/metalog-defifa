@@ -7,11 +7,15 @@ import { binForOutcome, formatPercentage, type RangeBin } from '@/domain/ranges'
 
 const LEFT = 8, RIGHT = 8, TOP = 24, BOTTOM = 51, TAIL = 34, TAIL_GAP = 10
 
-export function PositionChart({ ranges, quantities, coefficients, crowd, onChange, onPick, readOnly = false, reference = false, submitted = false }: {
+export function PositionChart({ ranges, quantities, coefficients, crowd, payout, mine = true, onChange, onPick, readOnly = false, reference = false, submitted = false }: {
   ranges: RangeBin[]
   quantities: number[]
-  /** Circulating NFTs per range, drawn as a step line in the same density units as your bars. */
+  /** Circulating NFTs per range, drawn as dotted bars behind your order in the same density units. */
   crowd?: number[]
+  /** Ratified payout share per range, drawn as thin blue bars. */
+  payout?: number[] | null
+  /** False hides your curve and order, leaving the crowd and payout. */
+  mine?: boolean
   coefficients: Coefficients
   onChange?: (value: Coefficients) => void
   /** A tap or click on a range, without dragging. */
@@ -22,6 +26,7 @@ export function PositionChart({ ranges, quantities, coefficients, crowd, onChang
 }) {
   const element = useRef<SVGSVGElement>(null)
   const descriptionId = useId()
+  const dots = `dots${useId().replace(/\W/g, '')}`
   const [width, setWidth] = useState(860)
   const HEIGHT = width < 700 ? 290 : 380
   const [selectedTier, setSelectedTier] = useState<number | null>(null)
@@ -33,7 +38,7 @@ export function PositionChart({ ranges, quantities, coefficients, crowd, onChang
   }, [])
   const picked = useRef<number | undefined>(undefined)
   const drag = useRef<{ x: number; y: number; width: number; moved: boolean; coefficients: Coefficients } | null>(null)
-  const interactive = !readOnly && !submitted && onChange !== undefined
+  const interactive = mine && !readOnly && !submitted && onChange !== undefined
   const positions = useMemo(() => {
     try { return positionDensities(ranges, quantities) }
     catch { return null }
@@ -48,31 +53,42 @@ export function PositionChart({ ranges, quantities, coefficients, crowd, onChang
       return Number.isFinite(result.peak) ? result : null
     } catch { return null }
   }, [coefficients, low, high])
-  const finite = positions?.filter(position => position.density !== null) ?? []
   const crowdAll = useMemo(() => {
     try { return crowd?.some(supply => supply > 0) ? positionDensities(ranges, crowd) : [] }
     catch { return [] }
   }, [ranges, crowd])
-  const crowdFinite = crowdAll.filter(position => position.density !== null)
+  // Selection, callouts and overflow columns follow your order, or the crowd when your order is hidden.
+  const basis = mine ? positions : crowdAll.length ? crowdAll : null
+  const mineShown = mine ? positions ?? [] : []
+  const finite = mineShown.filter(position => position.density !== null)
   // Overflow ranges have no width, so their tail columns borrow the neighboring range's width; the callout gives the exact share.
-  const tails = (positions ?? []).filter(position => position.density === null).map(position => {
-    const low = position.range.upper !== null
-    return { position, side: low ? 'low' as const : 'high' as const, density: position.share / (low ? firstWidth : lastWidth) }
-  })
-  const hasLow = tails.some(tail => tail.side === 'low'), hasHigh = tails.some(tail => tail.side === 'high')
-  const peak = Math.max(density?.peak ?? 0, ...finite.map(position => position.density!), ...crowdFinite.map(position => position.density!), ...tails.map(tail => tail.density)) || 1
+  const sideOf = (range: RangeBin) => range.upper !== null ? 'low' as const : 'high' as const
+  const columnDensity = (range: RangeBin, share: number) => range.lower !== null && range.upper !== null
+    ? share / (range.upper - range.lower) : share / (sideOf(range) === 'low' ? firstWidth : lastWidth)
+  const tails = mineShown.filter(position => position.density === null).map(position => ({ position, side: sideOf(position.range), density: columnDensity(position.range, position.share) }))
+  const overflow = ranges.filter(range => range.lower === null || range.upper === null)
+  const hasLow = overflow.some(range => sideOf(range) === 'low'), hasHigh = overflow.some(range => sideOf(range) === 'high')
+  const peak = Math.max(mine ? density?.peak ?? 0 : 0, ...mineShown.map(position => columnDensity(position.range, position.share)),
+    ...crowdAll.map(position => columnDensity(position.range, position.share)),
+    ...(payout ?? []).map((share, index) => columnDensity(ranges[index], share))) || 1
   const plotLeft = LEFT + (hasLow ? TAIL + TAIL_GAP : 0), plotRight = width - RIGHT - (hasHigh ? TAIL + TAIL_GAP : 0)
   const plotWidth = plotRight - plotLeft, plotHeight = HEIGHT - TOP - BOTTOM
   const axis = HEIGHT - BOTTOM
   const x = (value: number) => plotLeft + (value - low) / span * plotWidth
   const tailX = (side: 'low' | 'high') => side === 'low' ? LEFT : width - RIGHT - TAIL
-  const barTop = (position: NonNullable<typeof positions>[number]) => axis - (position.density ?? tails.find(tail => tail.position === position)?.density ?? 0) / peak * plotHeight
-  const barCenter = (position: NonNullable<typeof positions>[number]) => position.density !== null
-    ? (x(position.range.lower!) + x(position.range.upper!)) / 2 : tailX(position.range.upper !== null ? 'low' : 'high') + TAIL / 2
+  const column = (range: RangeBin) => range.lower !== null && range.upper !== null
+    ? { left: x(range.lower), right: x(range.upper) } : { left: tailX(sideOf(range)), right: tailX(sideOf(range)) + TAIL }
+  const tallest = (range: RangeBin, index: number) => Math.max(
+    mine ? columnDensity(range, positions?.[index]?.share ?? 0) : 0, columnDensity(range, crowdAll[index]?.share ?? 0), columnDensity(range, payout?.[index] ?? 0))
+  const barTop = (position: NonNullable<typeof positions>[number]) => axis - tallest(position.range, ranges.indexOf(position.range)) / peak * plotHeight
+  const barCenter = (position: NonNullable<typeof positions>[number]) => (column(position.range).left + column(position.range).right) / 2
+  // Your order sits inside the crowd's column so both stay readable.
+  const inset = crowdAll.length || payout ? .22 : 0
   const y = (value: number) => axis - value / peak * plotHeight
   // Interval averages preserve narrow spikes without inventing extra probability mass.
   const line = density?.buckets.map((bucket, index) => `${index ? 'L' : 'M'}${x(bucket.lower)},${y(bucket.density)} L${x(bucket.upper)},${y(bucket.density)}`).join(' ') ?? ''
-  const selected = positions?.find(position => position.range.tierId === selectedTier) ?? finite[Math.floor(finite.length / 2)]
+  const basisFinite = basis?.filter(position => position.density !== null) ?? []
+  const selected = basis?.find(position => position.range.tierId === selectedTier) ?? basisFinite[Math.floor(basisFinite.length / 2)]
   const describe = (position: NonNullable<typeof positions>[number]) => `${position.range.label}: ${position.quantity} NFTs (${(position.share * 100).toFixed(2)}%)`
   const instruction = submitted ? 'Submitted curve and minted positions.' : readOnly ? 'Showing the last valid allocation while you edit.'
     : interactive ? 'Drag to move the curve. Drag up to widen, down to narrow.' : 'Edit NFT counts in By range.'
@@ -80,10 +96,10 @@ export function PositionChart({ ranges, quantities, coefficients, crowd, onChang
 
   function selectAt(clientX: number) {
     const bounds = element.current?.getBoundingClientRect()
-    if (!bounds || bounds.width <= 0 || !positions) return
+    if (!bounds || bounds.width <= 0 || !basis) return
     const outcome = low + ((clientX - bounds.left) / bounds.width * width - plotLeft) / plotWidth * span
     const range = binForOutcome(ranges, outcome)
-    const position = positions.find(item => item.range.tierId === range.tierId)
+    const position = basis.find(item => item.range.tierId === range.tierId)
     if (position) setSelectedTier(position.range.tierId)
     setCallout(true)
     return position?.range.tierId
@@ -128,30 +144,45 @@ export function PositionChart({ ranges, quantities, coefficients, crowd, onChang
       }}>
       <title>{submitted ? 'Submitted curve and minted positions' : 'Your probability distribution'}</title>
       <desc id={descriptionId}>{`Bars show NFT share divided by range width; the line shows ${reference ? 'reference ' : ''}curve density. Focus or tap a range for its exact count and share. ${interactive ? 'Drag to move or widen the curve. Arrow keys move; Shift and arrow keys change spread.' : instruction}`}</desc>
+      <defs><pattern id={dots} width="7" height="7" patternUnits="userSpaceOnUse">
+        <circle cx="2" cy="2" r="1.7" className="dot-a" /><circle cx="5.5" cy="5" r="1.5" className="dot-b" /><circle cx="5" cy="1.5" r=".9" className="dot-c" />
+      </pattern></defs>
+      {crowdAll.map((position, index) => {
+        const { left, right } = column(position.range), top = axis - columnDensity(position.range, position.share) / peak * plotHeight
+        // Polygons keep rects for your order alone.
+        return <polygon key={`crowd-${position.range.tierId}`} className="chart-crowd-bar" fill={`url(#${dots})`} pointerEvents="none"
+          data-selected={selected?.range.tierId === position.range.tierId} data-index={index}
+          points={`${left + 1},${axis} ${left + 1},${top} ${right - 1},${top} ${right - 1},${axis}`} />
+      })}
+      {payout?.map((share, index) => {
+        if (!share) return null
+        const { left, right } = column(ranges[index]), top = axis - columnDensity(ranges[index], share) / peak * plotHeight, mid = (left + right) / 2, half = Math.max(3, (right - left) * .12)
+        return <polygon key={`payout-${ranges[index].tierId}`} className="chart-payout" pointerEvents="none"
+          points={`${mid - half},${axis} ${mid - half},${top} ${mid + half},${top} ${mid + half},${axis}`} />
+      })}
       {finite.map(position => {
         const { range } = position
         const height = position.density! / peak * plotHeight
-        return <rect key={range.tierId} x={x(range.lower!)} y={axis - height}
-          width={x(range.upper!) - x(range.lower!)} height={height} className="chart-bar"
+        const left = x(range.lower!), full = x(range.upper!) - left
+        return <rect key={range.tierId} x={left + full * inset} y={axis - height}
+          width={full * (1 - 2 * inset)} height={height} className="chart-bar"
           data-selected={selected?.range.tierId === range.tierId}
           tabIndex={0} aria-label={describe(position)} onFocus={() => { setSelectedTier(range.tierId); setCallout(true) }}>
           <title>{describe(position)}</title>
         </rect>
       })}
       {tails.map(({ position, side }) => {
-        const left = tailX(side), top = barTop(position)
+        const left = tailX(side) + TAIL * inset, right = tailX(side) + TAIL * (1 - inset), top = axis - columnDensity(position.range, position.share) / peak * plotHeight
         // Polygons, not rects: rects are the finite ranges.
         return <polygon key={position.range.tierId} className="chart-bar chart-tail" data-selected={selected?.range.tierId === position.range.tierId}
-          points={`${left},${axis} ${left},${top} ${left + TAIL},${top} ${left + TAIL},${axis}`}
+          points={`${left},${axis} ${left},${top} ${right},${top} ${right},${axis}`}
           tabIndex={0} aria-label={describe(position)} onFocus={() => { setSelectedTier(position.range.tierId); setCallout(true) }}>
           <title>{describe(position)}</title>
         </polygon>
       })}
-      {tails.map(({ position, side }) => <text key={`label-${position.range.tierId}`} x={tailX(side) + TAIL / 2} y={HEIGHT - 28} textAnchor="middle">
-        {side === 'low' ? '<' : '≥'}</text>)}
-      {crowdFinite.length > 0 && <polyline className="chart-crowd" pointerEvents="none"
-        points={crowdFinite.map(position => `${x(position.range.lower!)},${y(position.density!)} ${x(position.range.upper!)},${y(position.density!)}`).join(' ')} />}
-      <path d={line} className="chart-curve" pointerEvents="none" />
+      {overflow.map(range => <text key={`label-${range.tierId}`} x={tailX(sideOf(range)) + TAIL / 2} y={HEIGHT - 28} textAnchor="middle">
+        {sideOf(range) === 'low' ? '<' : '≥'}</text>)}
+      {mine && <path d={line} className="chart-curve" pointerEvents="none" />}
       <line x1={LEFT} x2={width - RIGHT} y1={axis} y2={axis} className="chart-axis" />
       {ticks.map(fraction => <text key={fraction} x={plotLeft + fraction * plotWidth} y={HEIGHT - 28}
         textAnchor={fraction === 0 ? 'start' : fraction === 1 ? 'end' : 'middle'}>
@@ -164,24 +195,26 @@ export function PositionChart({ ranges, quantities, coefficients, crowd, onChang
       top: `${Math.max(0, barTop(selected) / HEIGHT * 100)}%`,
     }}>
       <strong>{selected.range.label}</strong>
-      <span><b>{selected.quantity}</b> NFTs, {(selected.share * 100).toFixed(1)}%</span>
-      {crowdShare(selected.range.tierId) !== undefined && <span className="callout-crowd">Crowd {(crowdShare(selected.range.tierId)! * 100).toFixed(1)}%</span>}
+      {mine && <span>Yours <b>{selected.quantity}</b> NFTs, {(selected.share * 100).toFixed(1)}%</span>}
+      {crowdShare(selected.range.tierId) !== undefined && <span className="callout-crowd">Crowd {crowdAll[ranges.indexOf(selected.range)].quantity} NFTs, {(crowdShare(selected.range.tierId)! * 100).toFixed(1)}%</span>}
+      {payout && <span className="callout-payout">Payout {(payout[ranges.indexOf(selected.range)] * 100).toFixed(1)}%</span>}
       {onPick && <em>Click to edit</em>}
     </div>}
     </div>
     <div className="distribution-legend">
-      <span className="distribution-line">{reference ? 'Reference curve' : 'Curve'}</span>
-      <span className="distribution-bars">NFT positions</span>
-      {crowdFinite.length > 0 && <span className="distribution-crowd">Crowd</span>}
+      {mine && <span className="distribution-line">{reference ? 'Reference curve' : 'Curve'}</span>}
+      {mine && <span className={crowdAll.length ? 'distribution-bars distribution-order' : 'distribution-bars'}>{crowdAll.length ? 'Your order' : 'NFT positions'}</span>}
+      {crowdAll.length > 0 && <span className="distribution-crowd">Crowd</span>}
+      {payout && <span className="distribution-payout">Ratified payout</span>}
     </div>
     <div className="distribution-selection" role="status" aria-label="Selected range">
       {selected ? describe(selected) : 'NFT quantities cannot be displayed.'}
     </div>
     <div className="distribution-overflow sr-only" role="region" aria-label="Overflow positions">
       <span>Overflow</span>
-      {positions?.filter(position => position.density === null).map(position => <span key={position.range.tierId}>{describe(position)}</span>)}
+      {basis?.filter(position => position.density === null).map(position => <span key={position.range.tierId}>{describe(position)}</span>)}
     </div>
     {!density && <p className="hint" role="status">The curve cannot be displayed at this precision.</p>}
-    <p className="hint" style={{ minHeight: '3em' }}>{instruction}</p>
+    {mine && <p className="hint" style={{ minHeight: '3em' }}>{instruction}</p>}
   </>
 }

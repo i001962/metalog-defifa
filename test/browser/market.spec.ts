@@ -48,33 +48,16 @@ test('manual NFT buckets update chart, stake and export and recover from invalid
   await page.getByText('Market rules', { exact: true }).click()
   await expect(page.getByRole('link', { name: 'Built on Defifa, see engine code' })).toHaveAttribute('href', 'https://github.com/BallKidz/defifa/tree/main/src')
   await expect(page.locator('.facts')).not.toContainText('ratified Defifa')
-  await expect(page.getByRole('heading', { name: 'Positions (100)', exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Your order, 100 positions', exact: true })).toBeVisible()
   const positions = page.getByRole('region', { name: 'Positions', exact: true })
   await expect(positions.getByRole('textbox')).toHaveCount(0)
-  const firstHalf = positions.getByRole('table', { name: 'Positions, first half', exact: true })
-  const secondHalf = positions.getByRole('table', { name: 'Positions, second half', exact: true })
-  await expect(firstHalf.locator('tbody tr')).toHaveCount(11)
-  await expect(secondHalf.locator('tbody tr')).toHaveCount(10)
-  for (const table of [firstHalf, secondHalf]) {
-    await expect(table).toBeVisible()
-    expect(await table.getByRole('columnheader').allTextContents()).toEqual(['Range', 'Your curve', 'NFTs', 'Your positions'])
-  }
-  const firstBounds = (await firstHalf.boundingBox())!
-  const secondBounds = (await secondHalf.boundingBox())!
-  expect(firstBounds.width).toBeCloseTo(secondBounds.width, 1)
-  if (test.info().project.name === 'desktop') {
-    expect(firstBounds.y).toBeCloseTo(secondBounds.y, 1)
-    expect(secondBounds.x).toBeGreaterThanOrEqual(firstBounds.x + firstBounds.width)
-  } else {
-    expect(firstBounds.x).toBeCloseTo(secondBounds.x, 1)
-    expect(secondBounds.y).toBeGreaterThanOrEqual(firstBounds.y + firstBounds.height)
-  }
+  const order = positions.getByRole('table', { name: 'Your order', exact: true })
+  await expect(order).toBeVisible()
+  expect(await order.getByRole('columnheader').allTextContents()).toEqual(['Range', 'Curve', 'NFTs'])
+  // Only ranges with positions are listed, and the checkout never scrolls sideways.
+  expect(await order.locator('tbody tr td:nth-child(3)').allTextContents()).not.toContain('0')
   expect(await positions.evaluate(element => [element, ...element.querySelectorAll('table')].every(node =>
-    node.scrollWidth <= node.clientWidth + 1 && node.scrollHeight <= node.clientHeight + 1))).toBe(true)
-  expect(await positions.evaluate(element => [element, ...element.querySelectorAll('*')].every(node => {
-    const style = getComputedStyle(node)
-    return !['auto', 'scroll'].includes(style.overflowX) && !['auto', 'scroll'].includes(style.overflowY)
-  }))).toBe(true)
+    node.scrollWidth <= node.clientWidth + 1))).toBe(true)
   await page.getByRole('button', { name: 'By range', exact: true }).click()
   const countEditor = page.getByRole('region', { name: 'NFT counts', exact: true })
   const counts = countEditor.getByRole('textbox', { name: /^NFTs for / })
@@ -95,8 +78,9 @@ test('manual NFT buckets update chart, stake and export and recover from invalid
   expect(draft.allocation.quantities[0]).toBe(5)
   expect(draft.allocation.count).toBe(105)
   expect(draft.payment.valueWei).toBe('105000000000000000')
-  expect(await positions.locator('tbody tr td:first-child').allTextContents()).toEqual(draft.ranges.map((range: { label: string }) => range.label))
-  expect(await positions.locator('tbody tr td:nth-child(3)').allTextContents()).toEqual(draft.allocation.quantities.map(String))
+  const held = draft.allocation.quantities.map((quantity: number, index: number) => ({ quantity, label: draft.ranges[index].label })).filter((item: { quantity: number }) => item.quantity > 0)
+  expect(await positions.locator('tbody tr td:first-child').allTextContents()).toEqual(held.map((item: { label: string }) => item.label))
+  expect(await positions.locator('tbody tr td:nth-child(3)').allTextContents()).toEqual(held.map((item: { quantity: number }) => String(item.quantity)))
   const validHistogram = await chart.locator('rect').evaluateAll(bars => bars.map(bar => bar.getAttribute('height')))
   for (const invalid of ['', '-1', '1.5']) {
     await counts.first().fill(invalid)
@@ -127,7 +111,7 @@ test('manual NFT buckets update chart, stake and export and recover from invalid
   await expect(mean).toBeEnabled()
   await expect(stake).toHaveValue('0.1')
   await expect(page.getByRole('img', { name: 'Your probability distribution', exact: true })).toBeVisible()
-  await expect(page.getByRole('heading', { name: 'Positions (100)', exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Your order, 100 positions', exact: true })).toBeVisible()
   await expect(page.getByRole('img', { name: 'Your probability distribution', exact: true })).toBeVisible()
   await expect(positions.getByRole('textbox')).toHaveCount(0)
   await page.getByRole('button', { name: 'By range', exact: true }).click()
@@ -202,8 +186,7 @@ test('example curve, decimals, raw validation and independent stake errors', asy
     await expect(overflow).toContainText(`${draft.allocation.quantities[index]} NFTs`)
     await expect(overflow).toContainText(`${(draft.allocation.actualProbabilities[index] * 100).toFixed(2)}%`)
   }
-  await expect(page.getByRole('table', { name: 'Positions, first half', exact: true })).toBeVisible()
-  await expect(page.getByRole('table', { name: 'Positions, second half', exact: true })).toBeVisible()
+  await expect(page.getByRole('table', { name: 'Your order', exact: true })).toBeVisible()
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
   expect(failures).toEqual([])
   await page.screenshot({ path: `test-results/curve-${test.info().project.name}.png`, fullPage: true })
@@ -229,7 +212,7 @@ test('coefficient drafts preserve focused controls and last valid curve without 
   const download = page.getByRole('button', { name: 'Download draft' })
   const originalChart = await chart.elementHandle()
   const originalTables = await positions.getByRole('table').elementHandles()
-  if (!originalChart || originalTables.length !== 2) throw new Error('The initial preview is missing.')
+  if (!originalChart || originalTables.length !== 1) throw new Error('The initial preview is missing.')
   const originalHeights = await bars.evaluateAll(elements => elements.map(element => element.getAttribute('height')))
   const originalCurvePath = await chart.locator('path').getAttribute('d')
   const originalCounts = await counts.allTextContents()
@@ -245,7 +228,7 @@ test('coefficient drafts preserve focused controls and last valid curve without 
     expect(await originalChart.evaluate(element => element.isConnected)).toBe(true)
     await expect(chart.locator('path')).toHaveAttribute('d', originalCurvePath!)
     for (const table of originalTables) expect(await table.evaluate(element => element.isConnected)).toBe(true)
-    await expect(counts).toHaveCount(21)
+    await expect(counts).toHaveCount(originalCounts.length)
     expect(await counts.allTextContents()).toEqual(originalCounts)
     await expect(positions.getByRole('textbox')).toHaveCount(0)
     for (const name of ['Simple', 'Expressive', 'By range']) await expect(page.getByRole('button', { name, exact: true })).toBeEnabled()
