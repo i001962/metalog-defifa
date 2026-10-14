@@ -40,6 +40,9 @@ test('previewing another stage restyles the page and disables every action until
   // The entry form appears as it would during entry, but a preview can never send it.
   await expect(entry).toBeVisible()
   await expect(entry).toBeDisabled()
+  // Pay this, collect that: the best case, your curve's expectation and each range's return.
+  await expect(page.locator('.order-returns')).toContainText(/Best case .+ ETH \(.+x\).*Your curve expects .+ ETH \(.+x\)/)
+  await expect(page.getByRole('table', { name: 'Your order', exact: true }).getByRole('columnheader', { name: 'If it ends here' })).toBeVisible()
   await page.getByRole('button', { name: 'Preview Start', exact: true }).click()
   await expect(page.getByText('nothing can be sent', { exact: false })).toHaveCount(0)
   await expect(entry).toHaveCount(0)

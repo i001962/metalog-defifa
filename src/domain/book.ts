@@ -23,3 +23,16 @@ export function impliedChance(book: RangeBook | undefined, supply: number, potWe
   const chance = Number((bid + ask) * 10_000n / (2n * whole)) / 10_000
   return Math.min(1, Math.max(0, chance))
 }
+
+/**
+ * What an order collects if the outcome lands in each range, with that range taking the whole pot:
+ * your positions there times the pot after your order, shared by everyone's positions there.
+ * Expected weighs each outcome by your own curve's chance for it.
+ */
+export function orderReturns(potWei: bigint, supplies: readonly number[], quantities: readonly number[], costWei: bigint, chances: readonly number[]) {
+  const pot = potWei + costWei
+  const collect = quantities.map((quantity, index) => quantity > 0
+    ? BigInt(quantity) * (payoutPerPosition(pot, (supplies[index] ?? 0) + quantity) ?? 0n) : 0n)
+  const expected = collect.reduce((sum, wei, index) => sum + Number(wei) * (chances[index] ?? 0), 0)
+  return { collect, best: collect.reduce((max, wei) => wei > max ? wei : max, 0n), expectedWei: BigInt(Math.round(expected)) }
+}

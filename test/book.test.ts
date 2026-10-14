@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { impliedChance, payoutPerPosition, type RangeBook } from '../src/domain/book'
+import { impliedChance, orderReturns, payoutPerPosition, type RangeBook } from '../src/domain/book'
 
 const book = (bid?: bigint, ask?: bigint): RangeBook => ({ tierId: 1, bids: bid === undefined ? [] : [{ priceWei: bid, quantity: 1 }], asks: ask === undefined ? [] : [{ priceWei: ask, quantity: 1 }] })
 
@@ -26,5 +26,17 @@ describe('payoutPerPosition', () => {
     expect(payoutPerPosition(10n ** 18n, 10, 6n * 10n ** 17n)).toBe(6n * 10n ** 16n)
     expect(payoutPerPosition(10n ** 18n, 0)).toBeNull()
     expect(payoutPerPosition(0n, 10)).toBeNull()
+  })
+})
+
+describe('orderReturns', () => {
+  it('pays the pot after your order to the range it lands in, weighted by your curve for the expectation', () => {
+    // Pot 10, crowd 4 and 1 positions; you buy 1 in each range for 2 total.
+    const { collect, best, expectedWei } = orderReturns(10n ** 19n, [4, 1], [1, 1], 2n * 10n ** 18n, [.25, .75])
+    expect(collect).toEqual([12n * 10n ** 18n / 5n, 12n * 10n ** 18n / 2n])
+    expect(best).toBe(6n * 10n ** 18n)
+    expect(Number(expectedWei) / 1e18).toBeCloseTo(.25 * 2.4 + .75 * 6, 9)
+    // A range you hold nothing in pays you nothing.
+    expect(orderReturns(10n ** 19n, [4, 1], [0, 2], 10n ** 18n, [1, 0]).expectedWei).toBe(0n)
   })
 })

@@ -7,6 +7,7 @@ import { marketRanges, type MarketDefinition } from '@/domain/market'
 import type { MarketSnapshot } from '@/lib/defifa'
 import { downloadJson, forecastPreview, positionsForBudget } from '@/lib/forecast'
 import { forecastSIPmath } from '@/lib/sipmath'
+import { orderReturns } from '@/domain/book'
 import { useWallet } from '@/providers/Providers'
 import { useTransactions } from '@/providers/Transactions'
 import { PositionChart } from './PositionChart'
@@ -92,6 +93,12 @@ export function ForecastEditor({ definition, market, current = true, onSubmitted
   if (model.preview && model !== lastValidModels[mode]) setLastValidModels({ ...lastValidModels, [mode]: model })
   const displayedModel = model.preview ? model : lastValidModels[mode]
   const tablePreview = displayedModel?.preview
+  // Pay this, collect that: what the order returns if the outcome lands in each range.
+  const returns = market && model.preview && model.payment ? orderReturns(BigInt(market.potWei), crowd ?? [],
+    model.preview.allocation.quantities, model.payment.valueWei, model.preview.allocation.probabilities) : null
+  const cost = model.payment?.valueWei ?? 0n
+  const eth = (wei: bigint) => `${Number(formatEther(wei)).toLocaleString('en-US', { maximumSignificantDigits: 3 })} ETH`
+  const times = (wei: bigint) => cost > 0n ? `${(Number(wei * 100n / cost) / 100).toLocaleString('en-US', { maximumFractionDigits: 1 })}x` : ''
   function selectMode(next: EditorMode) {
     if (next === 'coefficients' && !expressiveInitialized) {
       setCoefficientFields(displayedCurve.map(String))
@@ -196,11 +203,16 @@ export function ForecastEditor({ definition, market, current = true, onSubmitted
           {displayedModel.payment.remainderWei > 0n && <small>{formatEther(displayedModel.payment.remainderWei)} ETH stays in your wallet.</small>}
         </div>}
       </div>
+      {returns && <p className="order-returns" aria-live="polite">
+        Best case <strong data-gain={returns.best > cost}>{eth(returns.best)} ({times(returns.best)})</strong>
+        <span className="pip" aria-hidden="true">|</span>
+        Your curve expects <strong data-gain={returns.expectedWei > cost}>{eth(returns.expectedWei)} ({times(returns.expectedWei)})</strong></p>}
       {tablePreview && <div className="positions" role="region" aria-label="Positions">
         <h3>Your order, {tablePreview.allocation.count} positions{!model.preview && <small> | Last valid preview</small>}</h3>
-        <table aria-label="Your order"><thead><tr><th>Range</th><th>{manual ? 'Reference' : 'Curve'}</th><th>Positions</th></tr></thead><tbody>
+        <table aria-label="Your order"><thead><tr><th>Range</th><th>{manual ? 'Reference' : 'Curve'}</th><th>Positions</th>{returns && <th title="What you collect if it ends in this range and the range takes the pot">If it ends here</th>}</tr></thead><tbody>
           {tablePreview.ranges.map((range, index) => tablePreview.allocation.quantities[index] > 0 && <tr key={range.tierId}>
             <td>{range.label}</td><td>{(tablePreview.allocation.probabilities[index] * 100).toFixed(1)}%</td><td>{tablePreview.allocation.quantities[index]}</td>
+            {returns && <td data-gain={returns.collect[index] > cost}>{eth(returns.collect[index])} ({times(returns.collect[index])})</td>}
           </tr>)}
         </tbody></table>
       </div>}
