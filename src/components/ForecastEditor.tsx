@@ -25,7 +25,7 @@ export function ForecastEditor({ definition, market, current = true, onSubmitted
   /** Market data exports, shown with the draft downloads. */
   exports?: ReactNode
   /** Shown under the chart; a function receives your curve's chance per range. */
-  below?: ReactNode | ((yours: number[] | null) => ReactNode)
+  below?: ReactNode | ((yours: number[] | null, onObservationChange: (outcome: number | null) => void) => ReactNode)
   market?: MarketSnapshot
   current?: boolean
   onSubmitted?: () => void
@@ -37,6 +37,7 @@ export function ForecastEditor({ definition, market, current = true, onSubmitted
   const [coefficientFields, setCoefficientFields] = useState(() => coefficientsFromMoments(0, 2).map(String))
   const [expressiveInitialized, setExpressiveInitialized] = useState(false)
   const [mode, setMode] = useState<EditorMode>('moments')
+  const [observationOutcome, setObservationOutcome] = useState<number | null>(null)
   const [quantities, setQuantities] = useState<string[] | null>(null)
   const [referenceCurve, setReferenceCurve] = useState(() => coefficientsFromMoments(0, 2))
   const [submitting, setSubmitting] = useState(false)
@@ -148,10 +149,10 @@ export function ForecastEditor({ definition, market, current = true, onSubmitted
   return <section aria-labelledby="your-view" className="forecast" data-browsing={browsing}>
     <div className="forecast-canvas">
       <PositionChart ranges={ranges} quantities={(manual && manualCounts) || tablePreview?.allocation.quantities || []}
-        coefficients={displayedCurve} crowd={crowd} payout={payout} live={live} mine={!browsing} reference={manual} onChange={manual ? undefined : changeCurve}
+        coefficients={displayedCurve} crowd={crowd} payout={payout} live={live} observationOutcome={observationOutcome} mine={!browsing} reference={manual} onChange={manual ? undefined : changeCurve}
           onPick={manual ? tierId => document.querySelector<HTMLInputElement>(`input[data-tier="${tierId}"]`)?.select() : undefined}
         readOnly={!model.preview && (!manual || !manualCounts)} />
-      {typeof below === 'function' ? below(displayedModel?.preview?.allocation.probabilities ?? null) : below}
+      {typeof below === 'function' ? below(displayedModel?.preview?.allocation.probabilities ?? null, setObservationOutcome) : below}
     </div>
     <div className="forecast-side">
     <div className="ticket" hidden={browsing}>

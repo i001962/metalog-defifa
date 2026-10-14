@@ -7,7 +7,7 @@ import { binForOutcome, curveFromPositions, formatPercentage, rangeEdges, shareA
 
 const LEFT = 8, RIGHT = 8, TOP = 24, BOTTOM = 51, TAIL_GAP = 10, TAIL_SHARE = .5
 
-export function PositionChart({ ranges, quantities, coefficients, crowd, payout, live, mine = true, onChange, onPick, readOnly = false, reference = false, submitted = false }: {
+export function PositionChart({ ranges, quantities, coefficients, crowd, payout, live, observationOutcome, mine = true, onChange, onPick, readOnly = false, reference = false, submitted = false }: {
   ranges: RangeBin[]
   quantities: number[]
   /** Circulating positions per range, drawn as dotted bars behind your order in the same density units. */
@@ -16,6 +16,8 @@ export function PositionChart({ ranges, quantities, coefficients, crowd, payout,
   payout?: number[] | null
   /** Book-implied odds per range, shown after the crowd's opening share. */
   live?: (number | null)[] | null
+  /** Live, provisional market outcome during the observation window. */
+  observationOutcome?: number | null
   /** False hides your curve and order, leaving the crowd and payout. */
   mine?: boolean
   coefficients: Coefficients
@@ -207,7 +209,7 @@ export function PositionChart({ ranges, quantities, coefficients, crowd, payout,
         if (event.shiftKey || ['ArrowUp', 'ArrowDown'].includes(event.key)) transform(coefficients, 0, ['ArrowUp', 'ArrowRight'].includes(event.key) ? 1.05 : 1 / 1.05)
         else transform(coefficients, span * (event.key === 'ArrowLeft' ? -.015 : .015), 1)
       }}>
-      <desc id={descriptionId}>{`Bars show position share divided by range width; the line shows ${reference ? 'reference ' : ''}curve density. Focus or tap a range for its exact count and share. ${interactive ? 'Drag to move or widen the curve. Arrow keys move; Shift and arrow keys change spread.' : instruction}`}</desc>
+      <desc id={descriptionId}>{`Bars show position share divided by range width; the line shows ${reference ? 'reference ' : ''}curve density.${observationOutcome !== null && observationOutcome !== undefined ? ` The live, provisional observation is ${formatPercentage(observationOutcome, 2)}.` : ''} Focus or tap a range for its exact count and share. ${interactive ? 'Drag to move or widen the curve. Arrow keys move; Shift and arrow keys change spread.' : instruction}`}</desc>
       <defs><pattern id={dots} width="7" height="7" patternUnits="userSpaceOnUse">
         <circle cx="2" cy="2" r="1.7" className="dot-a" /><circle cx="5.5" cy="5" r="1.5" className="dot-b" /><circle cx="5" cy="1.5" r=".9" className="dot-c" />
       </pattern></defs>
@@ -256,6 +258,14 @@ export function PositionChart({ ranges, quantities, coefficients, crowd, payout,
       {resultLine && <path className="chart-result-curve" pointerEvents="none"
         d={resultLine.buckets.map((bucket, index) => `${index ? 'L' : 'M'}${x(bucket.lower)},${y(bucket.density)} L${x(bucket.upper)},${y(bucket.density)}`).join(' ')} />}
       {mine && <path d={line} className="chart-curve" pointerEvents="none" />}
+      {observationOutcome !== null && observationOutcome !== undefined && <g className="chart-observation" pointerEvents="none">
+        {(() => {
+          const markerX = observationOutcome < low ? tailX('low') + TAIL / 2 : observationOutcome >= high ? tailX('high') + TAIL / 2 : x(observationOutcome)
+          const anchor = markerX < 75 ? 'start' : markerX > width - 75 ? 'end' : 'middle'
+          return <><line x1={markerX} x2={markerX} y1={TOP} y2={axis} />
+            <text x={markerX} y={TOP - 7} textAnchor={anchor}>Now {formatPercentage(observationOutcome, 2)}</text></>
+        })()}
+      </g>}
       <line x1={LEFT} x2={width - RIGHT} y1={axis} y2={axis} className="chart-axis" />
       {ticks.filter(tick => edge === null || answer === null || tick === edge || Math.abs(x(tick) - x(edge)) > 44).map(tick => <text key={tick}
         x={x(tick)} y={HEIGHT - 28} textAnchor="middle" className={tick === edge && answer !== null ? 'chart-tick-asked' : undefined}>
@@ -283,6 +293,7 @@ export function PositionChart({ ranges, quantities, coefficients, crowd, payout,
       {mine && <span className="distribution-line">{reference ? 'Reference curve' : 'Your curve'}</span>}
       {crowdLine && <span className="distribution-crowd-curve">Crowd curve</span>}
       {resultLine && <span className="distribution-result-curve">Resulting curve</span>}
+      {observationOutcome !== null && observationOutcome !== undefined && <span className="distribution-observation">Live outcome</span>}
     </div>
     <div className="distribution-selection" role="status" aria-label="Selected range">
       {selected ? describe(selected) : 'Position quantities cannot be displayed.'}
