@@ -16,6 +16,7 @@ import { readBook } from '@/lib/book'
 import { impliedChance } from '@/domain/book'
 import type { MarketSnapshot } from '@/lib/defifa'
 import { phaseCapabilities } from '@/lib/lifecycle-phase'
+import { ObservationTracker } from './ObservationTracker'
 
 type Tab = 'market' | 'nfts' | 'results' | 'rules'
 const PHASE: Record<MarketSnapshot['stage'], number> = { countdown: 0, entry: 1, refund: 2, trading: 3, settlement: 3, complete: 4, 'no-contest': 5 }
@@ -124,7 +125,10 @@ export function MarketView({ chainId, projectId }: { chainId: number; projectId:
       <ForecastEditor key={`${chainId}:${projectId}`} definition={market.definition} market={market} current={current} onSubmitted={refresh}
         crowd={supplies} payout={data.ratifiedPayoutShares} live={bookOdds} exports={exports('Market', false)}
         // ponytail: Activity stays unmounted until Bendystraw indexes Defifa; block-window log reads are too slow for long entry periods.
-        below={yours => inPlay && <OrderBook market={market} books={book?.books ?? null} sample={!!book?.sample} owned={mine} scorecards={lifecycle.scorecards} yours={yours} />} />
+        below={(yours, onObservationChange) => inPlay && <>
+          <OrderBook market={market} books={book?.books ?? null} sample={!!book?.sample} owned={mine} scorecards={lifecycle.scorecards} yours={yours} />
+          {market.stage === 'trading' && <ObservationTracker definition={market.definition} ranges={market.ranges} supplies={supplies} owned={mine} onOutcomeChange={onObservationChange} />}
+        </>} />
     </div>
     <MarketLifecycle key={`play:${chainId}:${projectId}`} lifecycle={lifecycle} current={current}
       panel={shown === 'nfts' || shown === 'results' ? shown : null}

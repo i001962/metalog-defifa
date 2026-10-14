@@ -151,10 +151,11 @@ dialog .actions { justify-content: flex-end; }
   .facts dd { margin-bottom: 8px; }
 }
 .distribution-legend { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 18px; margin-block: 6px 10px; color: var(--muted); font-size: 12px; }
-.distribution-line, .distribution-bars, .distribution-crowd, .distribution-payout, .distribution-crowd-curve, .distribution-result-curve { display: inline-flex; align-items: center; gap: 6px; }
+.distribution-line, .distribution-bars, .distribution-crowd, .distribution-payout, .distribution-crowd-curve, .distribution-result-curve, .distribution-observation { display: inline-flex; align-items: center; gap: 6px; }
 .distribution-line::before { content: ''; width: 20px; border-top: 3px solid var(--blue); }
 .distribution-crowd-curve::before { content: ''; width: 20px; border-top: 3px solid var(--cta); }
 .distribution-result-curve::before { content: ''; width: 20px; border-top: 3px dashed var(--ink); }
+.distribution-observation::before { content: ''; width: 2px; height: 14px; background: var(--rust); }
 .distribution-bars::before { content: ''; width: 16px; height: 10px; background: #e0874a99; }
 .distribution-crowd::before { content: ''; width: 14px; height: 10px; background: radial-gradient(circle, var(--accent) 1.4px, transparent 1.8px) 0 0 / 5px 5px; }
 .distribution-payout::before { content: ''; width: 6px; height: 12px; background: var(--blue); }
@@ -374,6 +375,8 @@ section.forecast[aria-labelledby="your-view"] { margin-top: 0; }
 .chart-ask .chart-ask-moved { color: var(--blue); }
 .chart-ask button { min-height: 0; margin: 0; padding: 0; border: 0; background: none; font: inherit; color: var(--ink); text-decoration: underline dotted; text-underline-offset: 3px; cursor: pointer; }
 .chart-edge line { stroke: var(--ink); stroke-width: 1.5; stroke-dasharray: 4 4; }
+.chart-observation line { stroke: var(--rust); stroke-width: 2; stroke-dasharray: 4 3; }
+.chart .chart-observation text { fill: var(--rust); font-size: 12px; font-weight: 650; }
 .chart-edge polygon { fill: var(--blue); fill-opacity: .08; }
 .chart .chart-edge text, .chart text.chart-tick-asked { font-weight: 650; fill: var(--ink); }
 .chart-payout { fill: var(--blue); opacity: .85; }
@@ -441,3 +444,24 @@ section.forecast[aria-labelledby="your-view"] { margin-top: 0; }
 .book-table tr[data-edge="dear"] > td { background: color-mix(in srgb, var(--rust) 10%, transparent); }
 .book-ask small { display: block; color: var(--muted); }
 .book-yours { font-variant-numeric: tabular-nums; }
+.observation-tracker { margin: 18px 0 28px; padding: 16px; border: 1px solid var(--line); background: var(--surface); }
+.observation-tracker-heading, .observation-tracker-reading { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.observation-tracker h3 { margin: 0; font: 600 18px/1.3 var(--serif); }
+.observation-tracker p { margin: 4px 0; color: var(--muted); font-size: 13px; }
+.observation-live-state { color: var(--muted); font-size: 12px; }
+.observation-live-state[data-live="true"] { color: var(--green); }
+.observation-tracker-reading { margin: 14px 0 4px; font-variant-numeric: tabular-nums; }
+.observation-tracker-reading strong { font: 600 clamp(25px, 4vw, 36px)/1 var(--serif); }
+.observation-tracker-reading span { font-size: 15px; color: var(--muted); }
+.observation-scale { margin: 20px 0 10px; }
+.observation-scale-track { position: relative; display: flex; height: 18px; border: 1px solid var(--ink); }
+.observation-scale-range { min-width: 1px; border-right: 1px solid color-mix(in srgb, var(--ink) 35%, transparent); background: color-mix(in srgb, var(--blue) 12%, var(--surface)); }
+.observation-scale-range:nth-child(even) { background: color-mix(in srgb, var(--blue) 22%, var(--surface)); }
+.observation-scale-range[data-current="true"] { background: color-mix(in srgb, var(--cta) 38%, var(--surface)); }
+.observation-scale-range:last-of-type { border-right: 0; }
+.observation-scale-marker { position: absolute; top: -6px; bottom: -6px; width: 2px; background: var(--cta); transform: translateX(-50%); }
+.observation-scale-marker i { position: absolute; top: -2px; left: 50%; width: 8px; height: 8px; background: var(--cta); transform: translateX(-50%) rotate(45deg); }
+.observation-scale-ends { display: flex; justify-content: space-between; gap: 12px; margin-top: 5px; color: var(--muted); font-size: 11px; }
+.observation-current-range { font-size: 13px !important; color: var(--ink) !important; }
+.observation-scale-note { font-size: 12px !important; }
+.observation-tracker > small { display: block; margin-top: 10px; color: var(--muted); font-size: 12px; }
