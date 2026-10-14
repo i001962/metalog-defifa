@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ASSET_PRESETS, buildObservationPreset, WINDOW_PRESETS } from '../src/domain/observation-presets'
+import { ASSET_PRESETS, buildObservationPreset, percentChange, presetProduct, WINDOW_PRESETS } from '../src/domain/observation-presets'
 import { marketRanges, validateMarket } from '../src/domain/market'
 import { binForOutcome } from '../src/domain/ranges'
 
@@ -59,5 +59,13 @@ describe('observation presets', () => {
       expect(binForOutcome(ranges, 0.5).tierId).toBe(5)
       expect(binForOutcome(ranges, 0.5 - 1e-8).tierId).toBe(4)
     }
+  })
+})
+
+describe('live outcome inputs', () => {
+  it('finds the product only in preset sources and computes the rule\'s change', () => {
+    for (const asset of ASSET_PRESETS) expect(presetProduct(buildObservationPreset(asset.id, '1d').source)).toBe(asset.id)
+    expect(presetProduct('Some other feed for ETH-USD')).toBeNull()
+    expect(percentChange(2507.09, 2424.77)).toBeCloseTo(-3.2835, 3)
   })
 })

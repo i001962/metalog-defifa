@@ -88,3 +88,7 @@ Follow-up (jango): memo curves can be shaped without paying for them, so the cro
 
 - Keep the swap-widget answer only: where (curve), how much (Buy), what you get. `orderReturns` in `domain/book.ts` beside `payoutPerPosition`: per range, your positions times the pot after your order shared by that range's positions, assuming the range takes the pot; expectation weighted by your curve. Shown as one line under Buy (best case, your curve expects) and an "If it ends here" column, green above your stake, rust below. Skipped: live price model, edge ranking, steps chrome. Unit test for the math, browser assertion on preview.
 - Order book follow-up: each ask shows what it wins if its range pays (`wins Nx`), a Your curve column, and rows tinted cheap (green) or dear (rust) when your curve's chance times the multiple beats or misses break-even. ForecastEditor's `below` takes a function to hand the book your curve's chances.
+
+## Live outcome marker (kmac)
+
+- While a preset market plays out, the chart marks where the outcome stands now: Coinbase start-candle open (the rule's observation start) against the latest ticker, `useLiveOutcome` in `lib/live-outcome.ts`, product parsed from the preset source (`presetProduct`). Label: "Now -3.48% | 1 position here". Custom sources show nothing. Estimate only; the ratified result settles. Unit test for parsing and the change; browser test with mocked Coinbase.

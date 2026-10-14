@@ -8,6 +8,7 @@ import type { MarketSnapshot } from '@/lib/defifa'
 import { downloadJson, forecastPreview, positionsForBudget } from '@/lib/forecast'
 import { forecastSIPmath } from '@/lib/sipmath'
 import { orderReturns } from '@/domain/book'
+import { useLiveOutcome } from '@/lib/live-outcome'
 import { useWallet } from '@/providers/Providers'
 import { useTransactions } from '@/providers/Transactions'
 import { PositionChart } from './PositionChart'
@@ -93,6 +94,8 @@ export function ForecastEditor({ definition, market, current = true, onSubmitted
   if (model.preview && model !== lastValidModels[mode]) setLastValidModels({ ...lastValidModels, [mode]: model })
   const displayedModel = model.preview ? model : lastValidModels[mode]
   const tablePreview = displayedModel?.preview
+  // While the game plays out, preset markets mark where the outcome stands now.
+  const now = useLiveOutcome(definition, market?.stage === 'trading')
   // Pay this, collect that: what the order returns if the outcome lands in each range.
   const returns = market && model.preview && model.payment ? orderReturns(BigInt(market.potWei), crowd ?? [],
     model.preview.allocation.quantities, model.payment.valueWei, model.preview.allocation.probabilities) : null
@@ -148,7 +151,7 @@ export function ForecastEditor({ definition, market, current = true, onSubmitted
   return <section aria-labelledby="your-view" className="forecast" data-browsing={browsing}>
     <div className="forecast-canvas">
       <PositionChart ranges={ranges} quantities={(manual && manualCounts) || tablePreview?.allocation.quantities || []}
-        coefficients={displayedCurve} crowd={crowd} payout={payout} live={live} mine={!browsing} reference={manual} onChange={manual ? undefined : changeCurve}
+        coefficients={displayedCurve} crowd={crowd} payout={payout} live={live} now={now} mine={!browsing} reference={manual} onChange={manual ? undefined : changeCurve}
           onPick={manual ? tierId => document.querySelector<HTMLInputElement>(`input[data-tier="${tierId}"]`)?.select() : undefined}
         readOnly={!model.preview && (!manual || !manualCounts)} />
       {typeof below === 'function' ? below(displayedModel?.preview?.allocation.probabilities ?? null) : below}

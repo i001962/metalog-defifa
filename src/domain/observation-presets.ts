@@ -23,3 +23,13 @@ export function buildObservationPreset(assetId: string, windowId: string) {
     durationSeconds: window.seconds,
   }
 }
+
+/** The Coinbase product a preset-made market observes, or null for custom sources. */
+export function presetProduct(source: string): string | null {
+  return ASSET_PRESETS.find(preset => source.startsWith(`Coinbase Exchange ${preset.id} 60-second candles`))?.id ?? null
+}
+
+/** Percentage change as the preset rule computes it. */
+export function percentChange(start: number, end: number) {
+  return 100 * (end / start - 1)
+}

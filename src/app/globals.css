@@ -441,3 +441,6 @@ section.forecast[aria-labelledby="your-view"] { margin-top: 0; }
 .book-table tr[data-edge="dear"] > td { background: color-mix(in srgb, var(--rust) 10%, transparent); }
 .book-ask small { display: block; color: var(--muted); }
 .book-yours { font-variant-numeric: tabular-nums; }
+/* Live outcome estimate while the game plays out. */
+.chart-now line { stroke: var(--accent); stroke-width: 2; }
+.chart .chart-now text { fill: var(--accent); font-weight: 650; }

@@ -52,6 +52,19 @@ test('previewing another stage restyles the page and disables every action until
   await expect(entry).toHaveCount(0)
 })
 
+test('in play, a preset market marks where its outcome stands now', async ({ page }) => {
+  await page.route('**/api.coinbase.com/**', route => route.abort())
+  const start = snapshot.market.definition.entryClosesAt
+  await page.route('**/api.exchange.coinbase.com/products/ETH-USD/candles?*', route => route.fulfill({ json: [[start, 1, 1, 2000, 1, 1], [start - 60, 1, 1, 1, 1, 1]] }))
+  await page.route('**/api.exchange.coinbase.com/products/ETH-USD/ticker', route => route.fulfill({ json: { price: '2010' } }))
+  await page.route('**/api/markets/84532/47/play?*', route => route.fulfill({ json: { ...snapshot, market: { ...snapshot.market,
+    definition: { ...snapshot.market.definition, source: 'Coinbase Exchange ETH-USD 60-second candles: https://api.exchange.coinbase.com/products/ETH-USD/candles?granularity=60' },
+    tiers: snapshot.market.tiers.map(tier => ({ ...tier, supply: '3' })) } } }))
+  await page.goto('/markets/84532/47')
+  // 2000 to 2010 is +0.5%, the top range.
+  await expect(page.locator('.chart-now text')).toHaveText('Now +0.5% | 3 positions here')
+})
+
 test('in play, the Market tab adds an order book that cannot trade without a venue', async ({ page }) => {
   await page.route('**/api.coinbase.com/**', route => route.abort())
   await page.route('**/api/markets/84532/47/play?*', route => route.fulfill({ json: { ...snapshot, market: { ...snapshot.market,

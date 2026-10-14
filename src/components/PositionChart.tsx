@@ -7,11 +7,13 @@ import { binForOutcome, curveFromPositions, formatPercentage, rangeEdges, shareA
 
 const LEFT = 8, RIGHT = 8, TOP = 24, BOTTOM = 51, TAIL_GAP = 10, TAIL_SHARE = .5
 
-export function PositionChart({ ranges, quantities, coefficients, crowd, payout, live, mine = true, onChange, onPick, readOnly = false, reference = false, submitted = false }: {
+export function PositionChart({ ranges, quantities, coefficients, crowd, payout, live, now, mine = true, onChange, onPick, readOnly = false, reference = false, submitted = false }: {
   ranges: RangeBin[]
   quantities: number[]
   /** Circulating positions per range, drawn as dotted bars behind your order in the same density units. */
   crowd?: number[]
+  /** A live estimate of the outcome while the game plays out. */
+  now?: number
   /** Ratified payout share per range, drawn as thin blue bars. */
   payout?: number[] | null
   /** Book-implied odds per range, shown after the crowd's opening share. */
@@ -249,6 +251,17 @@ export function PositionChart({ ranges, quantities, coefficients, crowd, payout,
         <line x1={x(edge)} x2={x(edge)} y1={axis} y2={TOP} />
         {!ticks.includes(edge) && <text x={x(edge)} y={HEIGHT - 28} textAnchor="middle">{formatPercentage(edge, 3)}</text>}
       </g>}
+      {now !== undefined && (() => {
+        // Inside the plot the marker sits at the value; past it, on the overflow column it falls in.
+        const bin = binForOutcome(ranges, now)
+        const at = bin.lower !== null && bin.upper !== null ? x(now) : column(bin).left + TAIL / 2
+        const held = crowd?.[ranges.indexOf(bin)] ?? 0
+        const anchor = at < width * .15 ? 'start' : at > width * .85 ? 'end' : 'middle'
+        return <g className="chart-now" pointerEvents="none">
+          <line x1={at} x2={at} y1={axis} y2={TOP} />
+          <text x={at} y={TOP - 8} textAnchor={anchor}>Now {formatPercentage(now, 2)}{crowd && ` | ${held} position${held === 1 ? '' : 's'} here`}</text>
+        </g>
+      })()}
       {overflow.map(range => <text key={`label-${range.tierId}`} x={tailX(sideOf(range)) + TAIL / 2} y={HEIGHT - 28} textAnchor="middle">
         {sideOf(range) === 'low' ? '<' : '≥'}</text>)}
       {crowdLine && <path className="chart-crowd-curve" pointerEvents="none"
