@@ -124,7 +124,7 @@ export function MarketView({ chainId, projectId }: { chainId: number; projectId:
       <ForecastEditor key={`${chainId}:${projectId}`} definition={market.definition} market={market} current={current} onSubmitted={refresh}
         crowd={supplies} payout={data.ratifiedPayoutShares} live={bookOdds} exports={exports('Market', false)}
         // ponytail: Activity stays unmounted until Bendystraw indexes Defifa; block-window log reads are too slow for long entry periods.
-        below={inPlay && <OrderBook market={market} books={book?.books ?? null} sample={!!book?.sample} owned={mine} scorecards={lifecycle.scorecards} />} />
+        below={yours => inPlay && <OrderBook market={market} books={book?.books ?? null} sample={!!book?.sample} owned={mine} scorecards={lifecycle.scorecards} yours={yours} />} />
     </div>
     <MarketLifecycle key={`play:${chainId}:${projectId}`} lifecycle={lifecycle} current={current}
       panel={shown === 'nfts' || shown === 'results' ? shown : null}

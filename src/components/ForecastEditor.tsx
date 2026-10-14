@@ -24,8 +24,8 @@ export function ForecastEditor({ definition, market, current = true, onSubmitted
   live?: (number | null)[] | null
   /** Market data exports, shown with the draft downloads. */
   exports?: ReactNode
-  /** Shown under the chart. */
-  below?: ReactNode
+  /** Shown under the chart; a function receives your curve's chance per range. */
+  below?: ReactNode | ((yours: number[] | null) => ReactNode)
   market?: MarketSnapshot
   current?: boolean
   onSubmitted?: () => void
@@ -151,7 +151,7 @@ export function ForecastEditor({ definition, market, current = true, onSubmitted
         coefficients={displayedCurve} crowd={crowd} payout={payout} live={live} mine={!browsing} reference={manual} onChange={manual ? undefined : changeCurve}
           onPick={manual ? tierId => document.querySelector<HTMLInputElement>(`input[data-tier="${tierId}"]`)?.select() : undefined}
         readOnly={!model.preview && (!manual || !manualCounts)} />
-      {below}
+      {typeof below === 'function' ? below(displayedModel?.preview?.allocation.probabilities ?? null) : below}
     </div>
     <div className="forecast-side">
     <div className="ticket" hidden={browsing}>

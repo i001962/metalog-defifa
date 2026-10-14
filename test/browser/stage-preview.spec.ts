@@ -64,6 +64,9 @@ test('in play, the Market tab adds an order book that cannot trade without a ven
   await expect(book.getByText('Sample book', { exact: false })).toHaveCount(0)
   await expect(book.getByText('No trading venue is connected yet.', { exact: true })).toBeVisible()
   for (const button of await book.getByRole('button', { name: /^(Buy|Sell)$/ }).all()) await expect(button).toBeDisabled()
+  // Your curve prices the book; with no asks there is no multiple and no row is called cheap or dear.
+  await expect(book.getByRole('columnheader', { name: 'Your curve' })).toBeVisible()
+  await expect(book.locator('tr[data-edge]')).toHaveCount(0)
   await book.getByRole('button', { name: snapshot.market.ranges[1].label, exact: true }).click()
   await expect(book.getByRole('button', { name: 'Review bid', exact: true })).toBeDisabled()
   // No venue, so the asked chance shows the crowd alone.

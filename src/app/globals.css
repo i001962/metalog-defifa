@@ -436,3 +436,8 @@ section.forecast[aria-labelledby="your-view"] { margin-top: 0; }
 .order-returns strong, .positions td[data-gain] { font-variant-numeric: tabular-nums; }
 .order-returns [data-gain="true"], .positions td[data-gain="true"] { color: var(--green); }
 .order-returns [data-gain="false"], .positions td[data-gain="false"] { color: var(--rust); }
+/* Book against your curve: green rows are cheap to it, rust rows dear. */
+.book-table tr[data-edge="cheap"] > td { background: color-mix(in srgb, var(--green) 14%, transparent); }
+.book-table tr[data-edge="dear"] > td { background: color-mix(in srgb, var(--rust) 10%, transparent); }
+.book-ask small { display: block; color: var(--muted); }
+.book-yours { font-variant-numeric: tabular-nums; }
