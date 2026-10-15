@@ -11,6 +11,8 @@ import { useWallet } from '@/providers/Providers'
 import { useTransactions } from '@/providers/Transactions'
 import { utcTime } from './MarketFacts'
 import { RangeStrip } from './RangeStrip'
+import { useLiveOutcome } from '@/lib/live-outcome'
+import { binForOutcome, formatPercentage } from '@/domain/ranges'
 
 export function MarketLifecycle({ lifecycle, panel, current, loading, error, onRefresh, onPage, inventoryPaged, scorecardsPaged }: {
   lifecycle: LifecycleSnapshot
@@ -35,6 +37,9 @@ export function MarketLifecycle({ lifecycle, panel, current, loading, error, onR
   const [percentages, setPercentages] = useState(() => market.ranges.map(() => '0'))
   const [resultView, setResultView] = useState<'weighted' | 'one-range'>('weighted')
   const [scoreTouched, setScoreTouched] = useState(false)
+  // Preset markets can read their own result once observation ends; proposing it is one click.
+  const observed = useLiveOutcome(market.definition, market.stage === 'settlement' ? 'final' : null)
+  const observedRange = observed?.final ? binForOutcome(market.ranges, observed.value) : null
   const [preparing, setPreparing] = useState(false)
   const [actionError, setActionError] = useState('')
   const walletKey = address?.toLowerCase() ?? ''
@@ -103,6 +108,37 @@ export function MarketLifecycle({ lifecycle, panel, current, loading, error, onR
     finally { setPreparing(false) }
   }
 
+  const propose = <>
+      <details open={lifecycle.scorecards.length === 0 && lifecycle.canSubmitScorecard}><summary>Propose a result</summary>
+        {observedRange && <div className="actions"><button type="button" onClick={() => {
+          setPercentages(market.ranges.map(range => range.tierId === observedRange.tierId ? '100' : '0')); setResultView('weighted'); setScoreTouched(true)
+        }}>Use the observed result: {formatPercentage(observed!.value, 2)}, {observedRange.label}</button></div>}
+        <div className="mode-toggle" role="group" aria-label="Result payout controls">
+          <button type="button" aria-pressed={resultView === 'weighted'} onClick={() => setResultView('weighted')}>Weighted</button>
+          <button type="button" aria-pressed={resultView === 'one-range'} onClick={() => setResultView('one-range')}>One range</button>
+        </div>
+        <p className="hint">Assign payout percentages across ranges. They must total exactly 100%. Holders still decide whether to ratify the result.</p>
+        {resultView === 'one-range' ? <><label className="field"><span>Propose one range</span><select className="result-range-select" value="" onChange={event => {
+          if (!event.target.value) return
+          setPercentages(market.ranges.map(range => String(range.tierId) === event.target.value ? '100' : '0'))
+          setScoreTouched(true)
+        }}><option value="">Choose a range to assign 100%</option>
+          {market.ranges.filter(range => BigInt(market.tiers.find(tier => tier.tierId === range.tierId)?.supply ?? '0') > 0n).map(range => <option key={range.tierId} value={range.tierId}>{range.label}</option>)}
+        </select></label><p className="hint">Choosing a range replaces the draft with 100% for that range. Switching views keeps your draft.</p></>
+        : <div className="payout-editor">
+          {market.ranges.map((range, index) => <label key={range.tierId}><input className="quantity-input" inputMode="decimal" aria-label={`Proposed payout for ${range.label} (%)`}
+            value={percentages[index]} onChange={event => { setPercentages(previous => previous.map((value, i) => i === index ? event.target.value : value)); setScoreTouched(true) }} />
+            <span className="hint">%</span><span>{range.label}</span></label>)}
+        </div>}
+        {scoreDraft.weights && <div className="table-wrap"><table aria-label="Proposed payout summary"><thead><tr><th>Range</th><th>Proposed payout</th></tr></thead><tbody>
+          {scoreDraft.weights.map(item => <tr key={item.tierId}><td>{market.ranges.find(range => range.tierId === item.tierId)?.label}</td><td>{formatUnits(BigInt(item.weight), 16)}%</td></tr>)}
+        </tbody></table></div>}
+        {scoreTouched && scoreDraft.error && <p className="error" role="alert">{scoreDraft.error}</p>}
+        {matchingWallet && !lifecycle.canSubmitScorecard && <p className="hint">Result proposals are unavailable in this phase.</p>}
+        <div className="actions"><button type="button" disabled={!canAct || !lifecycle.canSubmitScorecard || !scoreDraft.weights}
+          onClick={() => scoreDraft.weights && void act({ kind: 'submit-scorecard', weights: scoreDraft.weights })}>Review result</button></div>
+      </details>
+  </>
   return <>
     <section role="tabpanel" id="panel-nfts" aria-labelledby="your-nfts" hidden={panel !== 'nfts'}>
       <div className="row"><h2 id="your-nfts">Your positions</h2><button type="button" disabled={loading || busy} onClick={onRefresh}>Refresh</button></div>
@@ -182,15 +218,18 @@ export function MarketLifecycle({ lifecycle, panel, current, loading, error, onR
     <section role="tabpanel" id="panel-results" aria-labelledby="scorecards" hidden={panel !== 'results'}>
       <h2 id="scorecards">Results</h2>
       <p className="hint">The ratified result controls payouts. Attestation grace is {duration(lifecycle.attestationGraceSeconds)}; the ratification timelock is {duration(lifecycle.timelockSeconds)}.</p>
-      {lifecycle.scorecards.length === 0 && <p>{lifecycle.scorecardsComplete ? 'No results have been proposed.' : 'No results on this page.'}</p>}
+      {/* With nothing proposed yet, proposing is the job; reading older blocks comes after. */}
+      {lifecycle.scorecards.length === 0 && propose}
+      {lifecycle.scorecards.length === 0 && <p>{lifecycle.scorecardsComplete ? 'No results have been proposed.' : 'No results proposed in recent blocks.'}</p>}
       {lifecycle.scorecards.map(card => <details key={card.scorecardId} className="scorecard">
-        <summary><RangeStrip values={market.ranges.map(range => Number(card.weights.find(item => item.tierId === range.tierId)?.weight ?? 0))} />Result <code>{card.scorecardId}</code> | {card.stateName}</summary>
+        <summary><RangeStrip values={market.ranges.map(range => Number(card.weights.find(item => item.tierId === range.tierId)?.weight ?? 0))} />Result <code title={card.scorecardId}>{shortId(card.scorecardId)}</code> | {card.stateName}</summary>
         <dl className="facts">
+          <dt>Result ID</dt><dd><code>{card.scorecardId}</code></dd>
           <dt>Submitted</dt><dd>{utcTime(card.submittedAt)}</dd>
           <dt>Proposed by</dt><dd><code>{card.submitter}</code></dd>
           <dt>Attestations begin</dt><dd>{utcTime(card.attestationsBegin)}</dd>
           <dt>Grace ends</dt><dd>{utcTime(card.gracePeriodEnds)}</dd>
-          <dt>Attestation weight</dt><dd>{card.attestationCount}</dd>
+          <dt>Attestations</dt><dd>{BigInt(card.attestationCount).toLocaleString('en-US')} of {BigInt(card.quorum).toLocaleString('en-US')} needed{BigInt(card.attestationCount) >= BigInt(card.quorum) ? ', quorum met' : ''}</dd>
           {matchingWallet && card.accountWeight !== null && <><dt>Your voting weight</dt><dd>{card.accountWeight}</dd></>}
           {matchingWallet && <><dt>Your attestation</dt><dd>{card.hasAttested ? 'Attested' : 'Not attested'}</dd></>}
         </dl>
@@ -206,37 +245,13 @@ export function MarketLifecycle({ lifecycle, panel, current, loading, error, onR
           <button type="button" aria-label={`Ratify result ${card.scorecardId}`} disabled={!canAct || !card.canRatify}
             onClick={() => void act({ kind: 'ratify', weights: card.weights })}>Ratify</button>
         </div>
+        {!card.canRatify && ratifyNote(card, lifecycle.timelockSeconds) && <p className="hint">{ratifyNote(card, lifecycle.timelockSeconds)}</p>}
       </details>)}
       <div className="actions">
         {scorecardsPaged && <button type="button" disabled={loading || busy} onClick={() => onPage('scorecards')}>First results</button>}
         {lifecycle.scorecardsNextCursor && <button type="button" disabled={loading || busy} onClick={() => onPage('scorecards', lifecycle.scorecardsNextCursor!)}>Load more results</button>}
       </div>
-      <details><summary>Propose a result</summary>
-        <div className="mode-toggle" role="group" aria-label="Result payout controls">
-          <button type="button" aria-pressed={resultView === 'weighted'} onClick={() => setResultView('weighted')}>Weighted</button>
-          <button type="button" aria-pressed={resultView === 'one-range'} onClick={() => setResultView('one-range')}>One range</button>
-        </div>
-        <p className="hint">Assign payout percentages across ranges. They must total exactly 100%. Holders still decide whether to ratify the result.</p>
-        {resultView === 'one-range' ? <><label className="field"><span>Propose one range</span><select className="result-range-select" value="" onChange={event => {
-          if (!event.target.value) return
-          setPercentages(market.ranges.map(range => String(range.tierId) === event.target.value ? '100' : '0'))
-          setScoreTouched(true)
-        }}><option value="">Choose a range to assign 100%</option>
-          {market.ranges.filter(range => BigInt(market.tiers.find(tier => tier.tierId === range.tierId)?.supply ?? '0') > 0n).map(range => <option key={range.tierId} value={range.tierId}>{range.label}</option>)}
-        </select></label><p className="hint">Choosing a range replaces the draft with 100% for that range. Switching views keeps your draft.</p></>
-        : <div className="payout-editor">
-          {market.ranges.map((range, index) => <label key={range.tierId}><input className="quantity-input" inputMode="decimal" aria-label={`Proposed payout for ${range.label} (%)`}
-            value={percentages[index]} onChange={event => { setPercentages(previous => previous.map((value, i) => i === index ? event.target.value : value)); setScoreTouched(true) }} />
-            <span className="hint">%</span><span>{range.label}</span></label>)}
-        </div>}
-        {scoreDraft.weights && <div className="table-wrap"><table aria-label="Proposed payout summary"><thead><tr><th>Range</th><th>Proposed payout</th></tr></thead><tbody>
-          {scoreDraft.weights.map(item => <tr key={item.tierId}><td>{market.ranges.find(range => range.tierId === item.tierId)?.label}</td><td>{formatUnits(BigInt(item.weight), 16)}%</td></tr>)}
-        </tbody></table></div>}
-        {scoreTouched && scoreDraft.error && <p className="error" role="alert">{scoreDraft.error}</p>}
-        {matchingWallet && !lifecycle.canSubmitScorecard && <p className="hint">Result proposals are unavailable in this phase.</p>}
-        <div className="actions"><button type="button" disabled={!canAct || !lifecycle.canSubmitScorecard || !scoreDraft.weights}
-          onClick={() => scoreDraft.weights && void act({ kind: 'submit-scorecard', weights: scoreDraft.weights })}>Review result</button></div>
-      </details>
+      {lifecycle.scorecards.length === 0 || propose}
       {lifecycle.canFulfill && <div className="actions"><button type="button" disabled={!canAct} onClick={() => void act({ kind: 'fulfill' })}>Review commitment fulfillment</button></div>}
       {!market.noContestTriggered && !market.ratifiedScorecardId && <details><summary>No contest</summary>
         <p className="hint">The native timeout is {utcTime(lifecycle.noContestAfter)}. A no-contest refund becomes available only when the game permits it.</p>
@@ -244,6 +259,18 @@ export function MarketLifecycle({ lifecycle, panel, current, loading, error, onR
       </details>}
     </section>
   </>
+}
+
+const shortId = (id: string) => id.length > 12 ? `${id.slice(0, 4)}…${id.slice(-4)}` : id
+
+/** Why a result cannot be ratified yet, from its state, quorum and the earliest the timelock can end. */
+function ratifyNote(card: LifecycleSnapshot['scorecards'][number], timelock: number) {
+  const missing = BigInt(card.quorum) - BigInt(card.attestationCount)
+  const earliest = utcTime(card.gracePeriodEnds + timelock)
+  if (card.state === 0) return `Attestations open ${utcTime(card.attestationsBegin)}.`
+  if (card.state === 1) return missing > 0n ? `Needs ${missing.toLocaleString('en-US')} more attestation weight; ratify from ${earliest} at the earliest.` : `Ratify from ${earliest} at the earliest.`
+  if (card.state === 4) return `In the ratification timelock; ratify from ${earliest} at the earliest.`
+  return null
 }
 
 function duration(seconds: number) {

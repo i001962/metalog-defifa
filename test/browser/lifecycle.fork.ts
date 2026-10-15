@@ -124,7 +124,8 @@ test('the built website creates, enters, refunds, transfers, settles and claims 
     await refresh()
     await expect(page.getByRole('button', { name: 'Review entry', exact: true })).toBeDisabled()
     await expect(nfts().getByRole('button', { name: 'Review refund', exact: true })).toHaveCount(0)
-    await page.getByText('Propose a result', { exact: true }).click()
+    // With nothing proposed yet, the proposal form is already open.
+    await expect(page.getByRole('textbox', { name: /^Proposed payout for/ }).first()).toBeVisible()
     const weights = page.getByRole('textbox', { name: /^Proposed payout for/ })
     for (const [index, value] of ['50', '30', '20'].entries()) await weights.nth(index).fill(value)
     await transact(page.getByRole('button', { name: 'Review result', exact: true }), 'Propose result')

@@ -10,7 +10,7 @@ import { chainForId, publicClientForChain } from './wallet'
 import { firstBlockAtTimestamp, MAX_LOG_BLOCKS } from './history-blocks'
 import type { PreparedTransaction } from './transaction'
 import { decodeDefifaTransactionCall } from './transaction-scope'
-import { SCORECARD_WEIGHT_TOTAL, type TierWeight } from '../domain/scorecard'
+import { SCORECARD_WEIGHT_TOTAL, scorecardQuorum, type TierWeight } from '../domain/scorecard'
 import { MAX_POSITIONS } from '../domain/allocation'
 import { phaseCapabilities, type CashOutMode } from './lifecycle-phase'
 export { SCORECARD_WEIGHT_TOTAL, scorecardWeightsFromPercentages, type TierWeight } from '../domain/scorecard'
@@ -35,6 +35,8 @@ export type ScorecardSnapshot = {
   attestationsBegin: number
   gracePeriodEnds: number
   attestationCount: string
+  /** Attestation weight this result needs, as the governor snapshotted it at submission. */
+  quorum: string
   accountWeight: string | null
   hasAttested: boolean
   canAttest: boolean
@@ -214,6 +216,8 @@ async function readScorecards(
   const read = readAt(client, market)
   const id = projectNumber(market.projectId)
   const timestampByBlock = new Map<string, Promise<number>>()
+  // Ranges are frozen while scoring, so today's base quorum is the one each result snapshotted.
+  const baseQuorum = logs.length ? await read<bigint>(market.governor, 'DefifaGovernor', 'quorum', [id]) : 0n
   const cards = await Promise.all(logs.map(async log => {
     const args = log.args as unknown as SubmittedArgs
     if (args.gameId !== id || log.blockNumber === null || log.removed) throw new Error('The result log does not match this snapshot.')
@@ -231,14 +235,15 @@ async function readScorecards(
     return {
       scorecardId: args.scorecardId.toString(), weights: args.tierWeights.map(item => ({ tierId: Number(item.id), weight: item.cashOutWeight.toString() })),
       submitter: args.caller, state: Number(state), stateName: STATE_NAMES[Number(state)], submittedAt, attestationsBegin,
-      gracePeriodEnds: attestationsBegin + grace, attestationCount: count.toString(), accountWeight: weight?.toString() ?? null,
+      gracePeriodEnds: attestationsBegin + grace, attestationCount: count.toString(),
+      quorum: scorecardQuorum(baseQuorum, args.tierWeights.map(item => ({ tierId: Number(item.id), weight: item.cashOutWeight.toString() }))).toString(), accountWeight: weight?.toString() ?? null,
       hasAttested, canAttest: !!account && market.phase === 3 && [1, 3, 4].includes(Number(state)) && !hasAttested && weight !== null && weight > 0n,
       canRevoke: !!account && Number(state) === 1 && hasAttested,
       canRatify: !!account && market.phase === 3 && Number(state) === 3,
     }
   }))
-  // The native state is authority. Proposal quorum and quorumReachedAt are private; a base
-  // quorum or an invented timelock countdown would give a false impression of readiness.
+  // The native state is authority; quorum is recomputed from the governor's formula, and quorumReachedAt
+  // stays private, so the timelock's end is shown as "from" the grace end rather than invented.
   return { scorecards: cards.reverse(), next: nextEnd >= first ? nextEnd.toString() : null, complete: nextEnd < first }
 }
 

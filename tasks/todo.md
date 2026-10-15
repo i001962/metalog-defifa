@@ -92,3 +92,10 @@ Follow-up (jango): memo curves can be shaped without paying for them, so the cro
 ## Live outcome marker (kmac)
 
 - While a preset market plays out, the chart marks where the outcome stands now: Coinbase start-candle open (the rule's observation start) against the latest ticker, `useLiveOutcome` in `lib/live-outcome.ts`, product parsed from the preset source (`presetProduct`). Label: "Now -3.48% | 1 position here". Custom sources show nothing. Estimate only; the ratified result settles. Unit test for parsing and the change; browser test with mocked Coinbase.
+
+## Results tab from kmac's notes
+
+- Propose is the job when nothing is proposed: the form leads the tab, open, above "Load more results"; preset markets offer "Use the observed result" from the rule's own end candle.
+- The chart's marker reads the end candle once observation ends ("Ended"), so it never shows a price after the time that matters. Mode comes from the chain's stage, not the wall clock.
+- Each result shows "Attestations X of Y needed": Y is the governor's snapshotted quorum, recomputed by `scorecardQuorum` (base `quorum(gameId)`, frozen while scoring, plus headroom x largest share squared). Verified against Base game 28's stored snapshot (19,999,999,999 for a 100% result vs the 10.5e9 base). A disabled Ratify says why: attestations not open, weight missing, or the timelock's earliest end.
+- Result IDs shortened in the summary; the full ID stays in the details.

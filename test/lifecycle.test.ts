@@ -92,6 +92,7 @@ beforeEach(() => {
   mocks.readContract.mockImplementation(async ({ address, functionName, args }: { address: string; functionName: string; args: readonly unknown[] }) => {
     switch (functionName) {
       case 'projectId': return 7n
+      case 'quorum': return 1_500_000_000n
       case 'currentRulesetOf': return [{ id: 10n }, { dataHook: hook, useDataHookForPay: true }]
       case 'store': return d.store
       case 'CODE_ORIGIN': return d.implementation

@@ -95,7 +95,7 @@ export function ForecastEditor({ definition, market, current = true, onSubmitted
   const displayedModel = model.preview ? model : lastValidModels[mode]
   const tablePreview = displayedModel?.preview
   // While the game plays out, preset markets mark where the outcome stands now.
-  const now = useLiveOutcome(definition, market?.stage === 'trading')
+  const now = useLiveOutcome(definition, market?.stage === 'trading' ? 'live' : market && ['settlement', 'complete'].includes(market.stage) ? 'final' : null)
   // Pay this, collect that: what the order returns if the outcome lands in each range.
   const returns = market && model.preview && model.payment ? orderReturns(BigInt(market.potWei), crowd ?? [],
     model.preview.allocation.quantities, model.payment.valueWei, model.preview.allocation.probabilities) : null

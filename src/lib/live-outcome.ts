@@ -4,27 +4,31 @@ import { percentChange, presetProduct } from '@/domain/observation-presets'
 
 const EXCHANGE = 'https://api.exchange.coinbase.com/products'
 
+/** The open of the exact one-minute candle at a timestamp, as the preset rule reads it. */
+async function candleOpen(product: string, at: number) {
+  const iso = (seconds: number) => new Date(seconds * 1000).toISOString()
+  const response = await fetch(`${EXCHANGE}/${product}/candles?granularity=60&start=${iso(at)}&end=${iso(at + 60)}`)
+  if (!response.ok) throw new Error('Candle unavailable')
+  const candle = (await response.json() as number[][]).find(row => row[0] === at)
+  if (!candle || !(candle[3] > 0)) throw new Error('Candle unavailable')
+  return candle[3]
+}
+
 /**
- * Where a preset market's outcome stands now: the start candle's open against the latest trade.
- * An estimate for display only; the ratified result settles.
+ * A preset market's outcome by its own rule: the start candle's open against the latest trade while
+ * observing, then against the end candle's open once observation ends (final). Display only; the
+ * ratified result settles.
  */
-export function useLiveOutcome(definition: MarketDefinition, active: boolean): number | undefined {
+export function useLiveOutcome(definition: MarketDefinition, mode: 'live' | 'final' | null): { value: number; final: boolean } | undefined {
   const product = presetProduct(definition.source)
-  const start = definition.entryClosesAt
-  const enabled = active && product !== null
-  const open = useQuery({
-    queryKey: ['candle-open', product, start], enabled, staleTime: Infinity, retry: 1,
-    queryFn: async () => {
-      const at = (seconds: number) => new Date(seconds * 1000).toISOString()
-      const response = await fetch(`${EXCHANGE}/${product}/candles?granularity=60&start=${at(start)}&end=${at(start + 60)}`)
-      if (!response.ok) throw new Error('Start candle unavailable')
-      const candle = (await response.json() as number[][]).find(row => row[0] === start)
-      if (!candle || !(candle[3] > 0)) throw new Error('Start candle unavailable')
-      return candle[3]
-    },
-  }).data
+  const { entryClosesAt: start, resolvesAt: end } = definition
+  const enabled = mode !== null && product !== null
+  // The chain's stage says whether observation has ended; the wall clock never decides it here.
+  const ended = mode === 'final'
+  const open = useQuery({ queryKey: ['candle-open', product, start], enabled, staleTime: Infinity, retry: 1, queryFn: () => candleOpen(product!, start) }).data
+  const close = useQuery({ queryKey: ['candle-open', product, end], enabled: enabled && ended, staleTime: Infinity, retry: 1, queryFn: () => candleOpen(product!, end) }).data
   const price = useQuery({
-    queryKey: ['ticker', product], enabled, refetchInterval: 15_000, retry: 1,
+    queryKey: ['ticker', product], enabled: enabled && !ended, refetchInterval: 15_000, retry: 1,
     queryFn: async () => {
       const response = await fetch(`${EXCHANGE}/${product}/ticker`)
       const value = Number(response.ok ? (await response.json()).price : NaN)
@@ -32,5 +36,6 @@ export function useLiveOutcome(definition: MarketDefinition, active: boolean): n
       return value
     },
   }).data
-  return open && price ? percentChange(open, price) : undefined
+  const latest = ended ? close : price
+  return open && latest ? { value: percentChange(open, latest), final: ended } : undefined
 }
