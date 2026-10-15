@@ -50,8 +50,32 @@ test('a result shows its quorum and why it cannot be ratified yet', async ({ pag
   await page.goto('/markets/8453/27')
   await page.getByRole('tab', { name: /^Results/ }).click()
   const card = page.locator('details.scorecard')
-  await expect(card.locator('summary')).toContainText('Result 6052…8689 | Active')
-  await card.locator('summary').click()
+  await expect(card.locator('summary').first()).toContainText('Result 6052…8689 | Active')
+  await card.locator('summary').first().click()
   await expect(card).toContainText('12,396,763,389 of 19,999,999,999 needed')
   await expect(card).toContainText('Needs 7,603,236,610 more attestation weight')
+})
+
+test('who can attest lists each voter and says when quorum is out of reach', async ({ page }) => {
+  await page.route('**/api.coinbase.com/**', route => route.abort())
+  await page.route('**/api.exchange.coinbase.com/**', route => route.abort())
+  const id = '60529520722568114638999594129076250273058889415093720637770115388098871508689'
+  await page.route('**/api/markets/8453/27/play?*', route => route.fulfill({ json: { ...snapshot, scorecardsNextCursor: null, scorecardsComplete: true,
+    scorecards: [{ scorecardId: id, weights: [{ tierId: 1, weight: '1000000000000000000' }], submitter: account, state: 1, stateName: 'Active',
+      submittedAt: definition.resolvesAt + 1, attestationsBegin: definition.resolvesAt + 2, gracePeriodEnds: definition.resolvesAt + 86_402,
+      attestationCount: '12396763389', quorum: '19999999999', accountWeight: null, hasAttested: false, canAttest: false, canRevoke: false, canRatify: false }] } }))
+  // Base game 28's voters: together they hold 12 less than the result needs.
+  const voters = [['0x1014e77e55d596888d07a9ef701547cc81a71593', '7563430056', true], ['0x0b4bb80af55c564b14abef1991a312a951cffd02', '5595356073', false],
+    ['0xa21e61165a97cba8e02558ece645da45ae4eaf0a', '4833333333', true], ['0x59733c7cd78d08dab90368ad2cc09c8c81f097c0', '2007880525', false]]
+  await page.route('**/api/markets/8453/27/voters?*', route => {
+    expect(new URL(route.request().url()).searchParams.get('scorecard')).toBe(id)
+    return route.fulfill({ json: { voters: voters.map(([account, weight, attested]) => ({ account, weight, attested })), undelegated: 0 } })
+  })
+  await page.goto('/markets/8453/27')
+  await page.getByRole('tab', { name: /^Results/ }).click()
+  const card = page.locator('details.scorecard')
+  await card.locator('summary').first().click()
+  await card.getByText('Who can attest', { exact: true }).click()
+  await expect(card.getByRole('table', { name: 'Who can attest' }).getByRole('row')).toHaveCount(5)
+  await expect(card).toContainText('Every vote together is 19,999,999,987 of 19,999,999,999 needed, so this result cannot reach quorum.')
 })

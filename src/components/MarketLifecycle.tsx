@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query'
 import { formatEther, formatUnits, getAddress, isAddress } from 'viem'
 import { MAX_POSITIONS } from '@/domain/allocation'
 import { scorecardWeightsFromPercentages } from '@/domain/scorecard'
-import type { LifecycleAction, LifecycleSnapshot } from '@/lib/defifa-lifecycle'
+import type { LifecycleAction, LifecycleSnapshot, ResultVoters } from '@/lib/defifa-lifecycle'
 import { chainForId } from '@/lib/wallet'
 import { useWallet } from '@/providers/Providers'
 import { useTransactions } from '@/providers/Transactions'
@@ -246,6 +246,7 @@ export function MarketLifecycle({ lifecycle, panel, current, loading, error, onR
             onClick={() => void act({ kind: 'ratify', weights: card.weights })}>Ratify</button>
         </div>
         {!card.canRatify && ratifyNote(card, lifecycle.timelockSeconds) && <p className="hint">{ratifyNote(card, lifecycle.timelockSeconds)}</p>}
+        {card.state !== 5 && <VoterList market={market} card={card} />}
       </details>)}
       <div className="actions">
         {scorecardsPaged && <button type="button" disabled={loading || busy} onClick={() => onPage('scorecards')}>First results</button>}
@@ -259,6 +260,41 @@ export function MarketLifecycle({ lifecycle, panel, current, loading, error, onR
       </details>}
     </section>
   </>
+}
+
+/** Who can attest a result, read only when opened: whom to ask, and whether quorum is reachable at all. */
+function VoterList({ market, card }: { market: LifecycleSnapshot['market']; card: LifecycleSnapshot['scorecards'][number] }) {
+  const [open, setOpen] = useState(false)
+  const query = useQuery({
+    queryKey: ['result-voters', market.chainId, market.projectId, market.blockNumber, card.scorecardId], enabled: open, staleTime: Infinity, retry: false,
+    queryFn: async ({ signal }) => {
+      const params = new URLSearchParams({ blockNumber: market.blockNumber, scorecard: card.scorecardId, submittedAt: String(card.submittedAt) })
+      const response = await fetch(`/api/markets/${market.chainId}/${market.projectId}/voters?${params}`, { signal })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || 'Voters could not be read.')
+      return data as ResultVoters
+    },
+  })
+  const explorer = chainForId(market.chainId).blockExplorers.default.url
+  const total = query.data?.voters.reduce((sum, voter) => sum + BigInt(voter.weight), 0n) ?? 0n
+  const waiting = query.data?.voters.filter(voter => !voter.attested) ?? []
+  const short = (n: bigint) => n.toLocaleString('en-US')
+  return <details className="result-voters" onToggle={event => setOpen(event.currentTarget.open)}><summary>Who can attest</summary>
+    {query.isPending && open && <p className="hint" role="status">Reading voters…</p>}
+    {query.error && <p className="error" role="alert">{query.error.message} <button type="button" onClick={() => void query.refetch()}>Retry</button></p>}
+    {query.data && <>
+      {total < BigInt(card.quorum)
+        ? <p className="error">Every vote together is {short(total)} of {short(BigInt(card.quorum))} needed, so this result cannot reach quorum.</p>
+        : waiting.length > 0 && <p className="hint">{waiting.length} account{waiting.length === 1 ? '' : 's'} with {short(waiting.reduce((sum, voter) => sum + BigInt(voter.weight), 0n))} have not attested.</p>}
+      <div className="table-wrap"><table aria-label="Who can attest"><thead><tr><th>Account</th><th>Weight</th><th>Attested</th></tr></thead><tbody>
+        {query.data.voters.map(voter => <tr key={voter.account}>
+          <td><a href={`${explorer}/address/${voter.account}`} target="_blank" rel="noreferrer"><code>{voter.account.slice(0, 6)}…{voter.account.slice(-4)}</code></a></td>
+          <td>{short(BigInt(voter.weight))}</td><td>{voter.attested ? 'Yes' : 'No'}</td>
+        </tr>)}
+      </tbody></table></div>
+      {query.data.undelegated > 0 && <p className="hint">{query.data.undelegated} position{query.data.undelegated === 1 ? '' : 's'} were never delegated, so their weight counts for no one.</p>}
+    </>}
+  </details>
 }
 
 const shortId = (id: string) => id.length > 12 ? `${id.slice(0, 4)}…${id.slice(-4)}` : id

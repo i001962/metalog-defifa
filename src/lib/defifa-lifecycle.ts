@@ -575,3 +575,52 @@ export async function verifyLifecycleReceipt(request: LifecycleRequest, receipt:
     }
   }
 }
+
+/** The 721 store's uncapped tier supply, as DefifaDeployer creates every range. */
+const INITIAL_TIER_SUPPLY = 999_999_999n
+/** Bounds one voters read: owner, delegate and weight reads for at most this many positions. */
+const MAX_VOTER_POSITIONS = 2_000
+
+export type ResultVoters = {
+  /** Delegates holding attestation weight on this result, largest first. */
+  voters: { account: Address; weight: string; attested: boolean }[]
+  /** Positions whose holders never delegated, so their weight counts for no one. */
+  undelegated: number
+}
+
+/**
+ * Who can attest a result and how much each can add: every position's owner, that owner's
+ * delegate for the range, and the delegate's weight at the result's snapshot (submission - 1).
+ */
+export async function readResultVoters(client: PublicClient, market: MarketSnapshot, scorecardId: bigint, submittedAt: number): Promise<ResultVoters> {
+  const read = readAt(client, market)
+  const id = projectNumber(market.projectId)
+  const tokens = market.tiers.flatMap(tier => Array.from({ length: Number(INITIAL_TIER_SUPPLY - BigInt(tier.remainingSupply)) },
+    (_, serial) => ({ tierId: tier.tierId, tokenId: BigInt(tier.tierId) * TOKEN_MULTIPLIER + BigInt(serial + 1) })))
+  if (tokens.length > MAX_VOTER_POSITIONS) throw new Error(`Voters are listed for games up to ${MAX_VOTER_POSITIONS} positions.`)
+  // Burned positions have no owner; the client batches these reads into multicalls.
+  const owners = await Promise.all(tokens.map(token => read<Address>(market.hook, 'DefifaHook', 'ownerOf', [token.tokenId]).catch(() => null)))
+  const pairs = new Map<string, { owner: Address; tierId: number; positions: number }>()
+  owners.forEach((owner, index) => {
+    if (!owner) return
+    const key = `${owner.toLowerCase()}:${tokens[index].tierId}`
+    const pair = pairs.get(key) ?? { owner, tierId: tokens[index].tierId, positions: 0 }
+    pair.positions++
+    pairs.set(key, pair)
+  })
+  const delegated = await Promise.all([...pairs.values()].map(async pair => ({ ...pair,
+    delegate: await read<Address>(market.hook, 'DefifaHook', 'getTierDelegateOf', [pair.owner, BigInt(pair.tierId)]) })))
+  const delegates = [...new Set(delegated.filter(pair => !sameAddress(pair.delegate, zeroAddress)).map(pair => pair.delegate.toLowerCase()))] as Address[]
+  const voters = await Promise.all(delegates.map(async account => {
+    const [weight, attested] = await Promise.all([
+      read<bigint>(market.governor, 'DefifaGovernor', 'getBWAAttestationWeight', [id, scorecardId, account, submittedAt - 1]),
+      read<boolean>(market.governor, 'DefifaGovernor', 'hasAttestedTo', [id, scorecardId, account]),
+    ])
+    return { account, weight, attested }
+  }))
+  return {
+    voters: voters.filter(voter => voter.weight > 0n).sort((a, b) => a.weight === b.weight ? 0 : a.weight > b.weight ? -1 : 1)
+      .map(voter => ({ account: voter.account, weight: voter.weight.toString(), attested: voter.attested })),
+    undelegated: delegated.filter(pair => sameAddress(pair.delegate, zeroAddress)).reduce((sum, pair) => sum + pair.positions, 0),
+  }
+}

@@ -6,6 +6,9 @@ export function payoutPerPosition(potWei: bigint, supply: number, weight: bigint
   return potWei * weight / (SCORECARD_WEIGHT_TOTAL * BigInt(supply))
 }
 
+/** A runner-up's share in a result that pays the winner most and its neighbors a fifth each. */
+export const RUNNER_UP_WEIGHT = SCORECARD_WEIGHT_TOTAL / 5n
+
 /** One price level: ETH per position and how many positions rest at it. */
 export type BookLevel = { priceWei: bigint; quantity: number }
 /** A range's resting orders: bids best (highest) first, asks best (lowest) first. */
