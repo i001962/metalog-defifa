@@ -230,7 +230,7 @@ export function MarketLifecycle({ lifecycle, panel, current, loading, error, onR
           <dt>Attestations begin</dt><dd>{utcTime(card.attestationsBegin)}</dd>
           <dt>Grace ends</dt><dd>{utcTime(card.gracePeriodEnds)}</dd>
           <dt>Attestations</dt><dd>{BigInt(card.attestationCount).toLocaleString('en-US')} of {BigInt(card.quorum).toLocaleString('en-US')} needed{BigInt(card.attestationCount) >= BigInt(card.quorum) ? ', quorum met' : ''}</dd>
-          {matchingWallet && card.accountWeight !== null && <><dt>Your voting weight</dt><dd>{card.accountWeight}</dd></>}
+          {matchingWallet && card.accountWeight !== null && <><dt>Your voting weight</dt><dd>{BigInt(card.accountWeight).toLocaleString('en-US')}</dd></>}
           {matchingWallet && <><dt>Your attestation</dt><dd>{card.hasAttested ? 'Attested' : 'Not attested'}</dd></>}
         </dl>
         {matchingWallet && card.accountWeight === '0' && <p className="hint">This wallet has no voting weight for this proposal. Weight uses balances and delegation before submission and discounts payout ranges.</p>}
