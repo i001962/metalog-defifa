@@ -259,7 +259,7 @@ export function PositionChart({ ranges, quantities, coefficients, crowd, payout,
         const anchor = at < width * .15 ? 'start' : at > width * .85 ? 'end' : 'middle'
         return <g className="chart-now" pointerEvents="none">
           <line x1={at} x2={at} y1={axis} y2={TOP} />
-          <text x={at} y={TOP - 8} textAnchor={anchor}>{now.final ? 'Ended' : 'Now'} {formatPercentage(now.value, 2)}{crowd && ` | ${held} position${held === 1 ? '' : 's'} here`}</text>
+          <text x={at} y={TOP - 8} textAnchor={anchor}>{now.final ? 'Ended' : 'Now'} {formatPercentage(now.value, 2)}{crowd && !now.final && ` | ${held} position${held === 1 ? '' : 's'} here`}</text>
         </g>
       })()}
       {overflow.map(range => <text key={`label-${range.tierId}`} x={tailX(sideOf(range)) + TAIL / 2} y={HEIGHT - 28} textAnchor="middle">

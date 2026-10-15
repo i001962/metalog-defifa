@@ -36,7 +36,7 @@ test('with nothing proposed, proposing comes first and the observed result is on
   await expect(payouts.nth(1)).toHaveValue('0')
   // The chart marks the final outcome, not a live one.
   await page.getByRole('tab', { name: /^Market/ }).click()
-  await expect(page.locator('.chart-now text').first()).toHaveText(/^Ended -1% \| 2 positions here$/)
+  await expect(page.locator('.chart-now text').first()).toHaveText("Ended -1%")
 })
 
 test('a result shows its quorum and why it cannot be ratified yet', async ({ page }) => {

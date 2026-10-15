@@ -52,6 +52,14 @@ test('previewing another stage restyles the page and disables every action until
   await expect(entry).toHaveCount(0)
 })
 
+test('dust left in a claimed pot reads as a floor', async ({ page }) => {
+  await page.route('**/api.coinbase.com/**', route => route.fulfill({ json: { data: { amount: '2450' } } }))
+  await page.route('**/api/markets/84532/47/play?*', route => route.fulfill({ json: { ...snapshot, market: { ...snapshot.market, potWei: '1' } } }))
+  await page.goto('/markets/84532/47')
+  await expect(page.locator('.pot strong')).toHaveText('<$0.01')
+  await expect(page.locator('.pot-amounts')).toContainText('<0.000001 ETH')
+})
+
 test('in play, a preset market marks where its outcome stands now', async ({ page }) => {
   await page.route('**/api.coinbase.com/**', route => route.abort())
   const start = snapshot.market.definition.entryClosesAt

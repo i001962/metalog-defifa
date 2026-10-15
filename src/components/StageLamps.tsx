@@ -70,14 +70,16 @@ export function StageLamps({ market, positions, liveStage, onPreview }: {
   const gaps = [span(entryClosesAt - entryOpensAt), span(resolvesAt - entryClosesAt), 'awaits ratification']
   const pot = POT[market.stage]
   const eth = formatEther(BigInt(market.potWei))
+  // Dust left after claims reads as a floor, never eighteen decimals.
+  const ethShown = Number(eth) > 0 && Number(eth) < 1e-6 ? '<0.000001' : eth
   const ethUsd = useEthUsd()
   const usd = ethUsd === undefined ? null : Number(eth) * ethUsd
   return <div className="stage-bar" data-pot={pot.state}>
     <div className="pot">
       <span className="pot-head"><span className="pot-label">Pot</span><span className="pip" aria-hidden="true">|</span>
         <ChainIcon chainId={market.chainId} /><span>Game {market.projectId}</span></span>
-      <strong>{usd === null ? `${eth} ETH` : usdText(usd)}</strong>
-      <span className="pot-amounts">{eth} ETH <span className="pip" aria-hidden="true">|</span> {positions} positions</span>
+      <strong>{usd === null ? `${ethShown} ETH` : usd > 0 && usd < .01 ? '<$0.01' : usdText(usd)}</strong>
+      <span className="pot-amounts">{ethShown} ETH <span className="pip" aria-hidden="true">|</span> {positions} positions</span>
       <span className="pot-state">
         <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="7" width="10" height="8" rx="1.5" />
           <path d={pot.state === 'locked' ? 'M5.5 7V5a2.5 2.5 0 0 1 5 0v2' : 'M5.5 7V5a2.5 2.5 0 0 1 5 0'} /></svg>
