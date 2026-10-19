@@ -52,3 +52,10 @@ test('recent IDs reopen without trusting cached prompts or status', async ({ pag
   await page.getByRole('link', { name: 'Metalog', exact: true }).click()
   await expect(recent.getByRole('link', { name: 'Base Sepolia / Game 17', exact: true })).toHaveAttribute('href', '/markets/84532/17')
 })
+
+test('the markets page offers one way to create a market: the header link', async ({ page }) => {
+  await page.route('**/api/markets?*', route => route.fulfill({ json: { markets: [], errors: [] } }))
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: 'Markets', exact: true })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Create market', exact: true })).toHaveCount(1)
+})

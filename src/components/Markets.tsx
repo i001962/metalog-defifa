@@ -20,7 +20,7 @@ export function Markets() {
     return response.json() as Promise<{ markets: MarketSnapshot[]; errors: string[] }>
   }, staleTime: 30_000 })
   return <>
-    <div className="row"><h1>Markets</h1><Link className="button primary" href="/create">Create market</Link></div>
+    <h1>Markets</h1>
     <div className="grid">
       <label className="field"><span>Network</span><select className="network-select" value={chainId} onChange={event => setChainId(Number(event.target.value))}>{SUPPORTED_CHAINS.map(chain => <option key={chain.id} value={chain.id}>{chain.name}</option>)}</select></label>
       <form className="field" onSubmit={event => {
